@@ -68,7 +68,7 @@ class ChatModule:
                 )
                 chat = model.start_chat(history=gemini_history)
                 response = await chat.send_message_async(message)
-                ai_response = f"{response.text}\n\n---\n*Using: {m_name} | Key: {key_hint}*"
+                ai_response = response.text
                 
                 # Update history
                 history.append({"role": "user", "content": message})
@@ -79,7 +79,7 @@ class ChatModule:
                 last_error = str(e)
                 continue 
 
-        return f"❌ All discovered models failed ({len(to_try)} models tested).\nAvailable were: {', '.join(available_models[:5])}\nLast Error: {last_error[:150]}\nKey Hint: {key_hint}"
+        return "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai. Kuch dair baad try karein ya nai API key laga kar check karein."
 
     def clear_history(self, session_id: str = "default"):
         if session_id in self.sessions:
