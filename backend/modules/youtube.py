@@ -123,25 +123,27 @@ class YouTubeModule:
         }
 
     def _build_prompt(self, task: str, transcript: str, question: str = "") -> str:
-        base = f"You are a YouTube Analyst (NoteGPT Style). Analyze the transcript and provide a BILINGUAL REPORT (English & Roman Urdu).\n\nTranscript: {transcript[:25000]}\n\n"
+        base = f"You are a YouTube Analyst (NoteGPT Style). Analyze the transcript and provide a HIGH-QUALITY BILINGUAL DEEP DIVE (English & Roman Urdu).\n\nTranscript: {transcript[:25000]}\n\n"
 
         if task == "qa":
             return base + f"Answer this question in English and Roman Urdu: {question}"
 
         return base + """Provide a deep dive in exactly this format:
 
-## 📝 1. EXECUTIVE SUMMARY (English & Roman Urdu)
-[English summary here]
+## 📊 1. COMPREHENSIVE REPORT (Bilingual Overview)
+[Provide a detailed paragraph in English summarizing the video.]
 ---
-[Roman Urdu summary yahan likhein]
+[Provide the same summary in natural, fluid Roman Urdu. 'Video mein hamen ye sikhne ko milta hai ke...']
 
 ## 🎯 2. KEY TAKEAWAYS (Bullet Points)
-* [English Points]
-* [Roman Urdu Points]
+* [English Point 1]
+* [Roman Urdu Point 1]
+* [English Point 2]
+* [Roman Urdu Point 2]
 
-## 📑 3. STRATEGIC CHAPTER BREAKDOWN
+## 📑 3. STRATEGIC ANALYSIS / CHAPTERS
 [Timestamp/Topic - English]
 ---
 [Timestamp/Topic - Roman Urdu]
 
-Ensure the Roman Urdu is readable and natural (e.g., 'Video mein bataya gaya hai ke...')."""
+💡 Ensure the Roman Urdu is readable and natural. Don't use difficult Urdu words, use the language as people chat (Roman Urdu style)."""

@@ -186,7 +186,7 @@ elif selected_page == "🎥 YouTube Deep Dive":
 
     yt_url = st.text_input("🔗 YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
     
-    st.info("💡 NoteGPT Mode: Deep Dive in English & Roman Urdu")
+    st.info("NoteGPT Mode: Deep Dive in English & Roman Urdu")
     user_question = st.text_input("❓ Optional: Ask a specific question about the video", placeholder="E.g., What did he say about X?")
     
     analyze_btn = st.button("🚀 Run NoteGPT Deep Dive", use_container_width=True)
@@ -210,15 +210,25 @@ elif selected_page == "🎥 YouTube Deep Dive":
                         st.markdown(data.get("analysis", "No analysis available"))
                     
                     with tab2:
-                        st.markdown("### 🎯 Key Points Summary")
-                        st.info("Bilingual insights generated based on video context.")
-                        st.write(data.get("analysis", "").split("## 🎯")[1] if "## 🎯" in data.get("analysis", "") else "Key points section found in the report.")
+                        st.markdown("### 🎯 Key Takeaways (Bilingual)")
+                        st.info("Direct insights from the video in English & Roman Urdu.")
+                        analysis_text = data.get("analysis", "")
+                        if "## 🎯" in analysis_text:
+                            takeaways = analysis_text.split("## 🎯")[1]
+                            if "## 📑" in takeaways: # Split from next section if exists
+                                takeaways = takeaways.split("## 📑")[0]
+                            st.write(takeaways)
+                        else:
+                            st.write("Key takeaways section found in the full report below.")
                     
                     with tab3:
-                        st.text_area("Transcript Preview", value=data.get("transcript_preview", ""), height=300, disabled=True)
-                        st.warning("📡 YouTube Transcripts are currently blocked/disabled by the server. Switching to AI Analysis based on Video Metadata (Title/Description).")
+                        st.markdown("### 📜 Full Transcript Preview")
+                        st.text_area("Transcript Extract", value=data.get("transcript_preview", ""), height=300, disabled=True)
+                        if "TRANSCRIPT_ERROR" in data.get("transcript_preview", ""):
+                            st.warning("⚠️ YouTube Transcripts were blocked/disabled. Analysis is based on metadata.")
                     
-                    st.markdown(f"🔗 [Video Link]({data.get('video_url', yt_url)})")
+                    st.divider()
+                    st.markdown(f"🔗 **Video Link:** [{data.get('video_url', yt_url)}]({data.get('video_url', yt_url)})")
                 else:
                     st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
             except requests.Timeout:
@@ -228,12 +238,13 @@ elif selected_page == "🎥 YouTube Deep Dive":
     elif analyze_btn and not yt_url:
         st.warning("⚠️ Pehle YouTube URL enter karo!")
 
-    with st.expander("💡 Tips & Tricks"):
+    with st.expander("💡 Tips & Tricks (Kaise use karein)"):
         st.markdown("""
-        - English captions wali videos best kaam karti hain
-        - Auto-generated captions bhi work karti hain
-        - Long videos ke liye "Key Points" option use karo
-        - Private videos supported nahi hain
+        - **English Captions**: English captions wali videos ka result sab se behtar aata hai.
+        - **Auto-Generated**: YouTube ke auto-generated captions bhi work karte hain.
+        - **Lambi Videos**: Agar video lamba hai to "Key Takeaways" aapko jaldi summary de dega.
+        - **Private Videos**: Private ya Restricted videos support nahi hain.
+        - **Specific Saval**: Aap kisi khaas topic pe sawal bhi pooch sakte hain.
         """)
 
 
