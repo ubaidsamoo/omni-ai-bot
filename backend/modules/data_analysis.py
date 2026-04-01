@@ -18,6 +18,7 @@ import json
 class DataAnalysisModule:
 
     def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
+        self.api_key = api_key
         genai.configure(api_key=api_key)
         self.model_name = model_name
 
@@ -139,36 +140,53 @@ class DataAnalysisModule:
         stats = self._get_statistical_summary(df)
         chart_b64 = await asyncio.to_thread(self._generate_chart, df)
 
-        prompt = f"""You are a data analyst. Analyze this dataset.
+        # Trim stats to avoid prompt bloat (Quota 429 fix)
+        trimmed_stats = {
+            "rows": stats['shape']['rows'],
+            "cols": stats['shape']['columns'],
+            "column_names": stats['columns'][:15], # Limit to first 15 columns
+            "null_summary": {k: v for i, (k, v) in enumerate(stats['null_counts'].items()) if i < 10},
+            "numeric_peek": {k: v for i, (k, v) in enumerate(stats.get('numeric_stats', {}).items()) if i < 5},
+            "sample_rows": stats['sample_data'][:2] # Only 2 rows for context
+        }
 
-Dataset:
-- Rows: {stats['shape']['rows']:,}
-- Columns: {stats['shape']['columns']}
-- Column Names: {', '.join(stats['columns'])}
-- Data Types: {json.dumps(stats['dtypes'], indent=2)}
-- Missing Values: {json.dumps(stats['null_counts'], indent=2)}
-- Stats: {json.dumps(stats.get('numeric_stats', {}), indent=2, default=str)}
-- Sample: {json.dumps(stats['sample_data'], indent=2, default=str)}
-
+        prompt = f"""You are a Pro Data Analyst. Keep insights concise and strategic.
+Dataset Summary: {json.dumps(trimmed_stats, default=str)}
 User Question: {question}
 
-Provide:
-## 📊 Dataset Overview
-## 🔍 Key Statistical Insights
-## ❓ Answer to Question
-## 💡 Recommendations
-## ⚠️ Data Quality Issues"""
+Provide 4 sections using emojis: Overview, Key Findings, Answer, and Strategy."""
 
-        model = genai.GenerativeModel(self.model_name)
+        # --- DYNAMIC MODEL DISCOVERY & FALLBACK ---
+        key_hint = f"{self.api_key[:4]}...{self.api_key[-4:]}" if len(self.api_key) > 5 else "Invalid Key"
+        available_models = []
         try:
-            response = await model.generate_content_async(prompt)
-            ai_insights = response.text
-        except Exception as e:
-            err_msg = str(e).lower()
-            if "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
-                ai_insights = "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai. Kuch dair baad try karein ya nai API key laga kar check karein."
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    available_models.append(m.name.replace('models/', ''))
+        except:
+            available_models = [self.model_name, "gemini-1.5-flash"]
+
+        to_try = [self.model_name, "gemini-1.5-flash", "gemini-1.5-pro"]
+        for a in available_models:
+            if a not in to_try: to_try.append(a)
+
+        ai_insights = ""
+        last_err = ""
+        for m_name in to_try:
+            try:
+                model = genai.GenerativeModel(model_name=m_name)
+                response = await model.generate_content_async(prompt)
+                ai_insights = response.text
+                break
+            except Exception as e:
+                last_err = str(e)
+                continue
+        
+        if not ai_insights:
+            if "429" in last_err.lower() or "quota" in last_err.lower():
+                ai_insights = "🙏 Gemini limit exhausted! Nayi key try karein ya kuch dair ruk kar check karein."
             else:
-                ai_insights = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
+                ai_insights = f"⚠️ Analysis error: {last_err[:100]}"
 
         return {
             "status": "✅ Analysis complete!",

@@ -12,18 +12,56 @@ st.set_page_config(page_title="Omni AI", page_icon="🤖", layout="wide", initia
 
 st.markdown("""
 <style>
-    .stApp { background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%); color: #e0e0e0; }
-    [data-testid="stSidebar"] { background: linear-gradient(180deg, #1a1a2e 0%, #0f0f1a 100%); border-right: 1px solid #2d2d5e; }
-    .main-header { background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; margin-bottom: 20px; text-align: center; box-shadow: 0 8px 32px rgba(102,126,234,0.3); }
-    .main-header h1 { color: white; font-size: 2.5rem; margin: 0; }
-    .main-header p { color: rgba(255,255,255,0.85); font-size: 1rem; margin: 8px 0 0 0; }
-    .feature-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; margin: 10px 0; }
-    .chat-user { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 16px; border-radius: 18px 18px 4px 18px; margin: 8px 0; max-width: 80%; margin-left: auto; }
-    .chat-ai { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #e0e0e0; padding: 12px 16px; border-radius: 18px 18px 18px 4px; margin: 8px 0; max-width: 80%; }
-    .stButton > button { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; padding: 10px 24px; font-weight: 600; }
-    hr { border-color: rgba(255,255,255,0.1); }
-    [data-testid="stMetric"] { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    .metric-card { background: rgba(255,255,255,0.05); border-top: 4px solid #667eea; padding: 15px; border-radius: 5px; text-align: center; }
+    .stApp { background: #0f1116; color: #ffffff; font-family: 'Inter', sans-serif; }
+    [data-testid="stSidebar"] { background: #161922; border-right: 1px solid #2d333b; }
+    
+    /* Premium Header */
+    .main-header { 
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); 
+        padding: 40px 20px; border-radius: 20px; margin-bottom: 30px; text-align: center;
+        box-shadow: 0 15px 35px rgba(79,70,229,0.3); border: 1px solid rgba(255,255,255,0.1);
+    }
+    .main-header h1 { color: white; font-size: 3.5rem; font-weight: 800; margin: 0; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+    .main-header p { color: rgba(255,255,255,0.8); font-size: 1.1rem; margin-top: 10px; }
+
+    /* Glassmorphism Cards */
+    .dashboard-card {
+        background: rgba(255,255,255,0.03); 
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px; padding: 24px; 
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        min-height: 140px;
+    }
+    .dashboard-card:hover { 
+        transform: translateY(-8px); 
+        background: rgba(255,255,255,0.06);
+        border-color: #4f46e5;
+        box-shadow: 0 12px 30px rgba(79,70,229,0.25);
+    }
+    
+    .kpi-title { color: #94a3b8; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
+    .kpi-value { font-size: 2.5rem; font-weight: 800; color: #ffffff; margin: 0; }
+    .kpi-trend { font-size: 0.8rem; font-weight: 500; margin-top: 8px; padding: 2px 8px; border-radius: 20px; background: rgba(76,175,80,0.1); color: #4ade80; }
+    
+    /* Smart Insight Box */
+    .insight-box {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.05);
+        border-left: 6px solid #4f46e5;
+        padding: 30px; border-radius: 16px;
+        font-size: 1.05rem; line-height: 1.7; color: #cbd5e1;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    }
+
+    .stButton > button { 
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); 
+        border: none; color: white; font-weight: 700; border-radius: 12px;
+        padding: 12px 28px; transition: all 0.2s;
+    }
+    .stButton > button:hover { transform: scale(1.02); box-shadow: 0 5px 15px rgba(79,70,229,0.4); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -247,38 +285,31 @@ elif selected_page == "📊 Data Analysis":
                         # KPI Metrics Row
                         m1, m2, m3, m4 = st.columns(4)
                         with m1:
-                            st.markdown("<div class='metric-card'><strong>Total Rows</strong><br><h2>{:,}</h2></div>".format(shape.get('rows', 0)), unsafe_allow_html=True)
+                            st.markdown(f"<div class='dashboard-card'><div class='kpi-title'>Total Rows</div><div class='kpi-value'>{shape.get('rows', 0):,}</div><div class='kpi-trend'>Stable</div></div>", unsafe_allow_html=True)
                         with m2:
-                            st.markdown("<div class='metric-card'><strong>Columns</strong><br><h2>{}</h2></div>".format(shape.get('columns', 0)), unsafe_allow_html=True)
+                            st.markdown(f"<div class='dashboard-card'><div class='kpi-title'>Attributes</div><div class='kpi-value'>{shape.get('columns', 0)}</div><div class='kpi-trend'>Valid</div></div>", unsafe_allow_html=True)
                         with m3:
                             null_total = sum(data.get("null_counts", {}).values())
-                            st.markdown("<div class='metric-card'><strong>Missing Vals</strong><br><h2>{}</h2></div>".format(null_total), unsafe_allow_html=True)
+                            st.markdown(f"<div class='dashboard-card'><div class='kpi-title'>Missing</div><div class='kpi-value'>{null_total}</div><div class='kpi-trend' style='color:#ff4b4b;'>{round((null_total/max(1, shape.get('rows',1)))*100, 1)}%</div></div>", unsafe_allow_html=True)
                         with m4:
-                            st.markdown("<div class='metric-card'><strong>Status</strong><br><h2 style='color:#4CAF50;'>Ready</h2></div>", unsafe_allow_html=True)
+                            st.markdown("<div class='dashboard-card'><div class='kpi-title'>System</div><div class='kpi-value'>AI</div><div class='kpi-trend' style='color:#667eea;'>Optimized</div></div>", unsafe_allow_html=True)
                         
                         st.write("")
                         st.divider()
 
                         # Grid Layout: Charts and Insights
-                        col_chart, col_insights = st.columns([1.3, 1])
+                        col_chart, col_insights = st.columns([1.2, 1])
                         
                         with col_chart:
                             if data.get("chart_base64"):
-                                st.markdown("#### 📊 Visual Distribution")
+                                st.markdown("#### 📊 Analysis Snapshot")
                                 chart_bytes = base64.b64decode(data["chart_base64"])
                                 chart_image = Image.open(io.BytesIO(chart_bytes))
-                                try:
-                                    st.image(chart_image, use_column_width=True)
-                                except:
-                                    st.image(chart_image) # Fallback if even col_width fails
+                                st.image(chart_image, use_column_width=True)
                         
                         with col_insights:
-                            st.markdown("#### 💡 AI Strategic Insights")
-                            st.markdown(f"""
-                            <div style='background: rgba(102,126,234,0.1); border-left: 5px solid #667eea; padding: 20px; border-radius: 10px; min-height: 400px;'>
-                                {data.get('ai_insights', 'No insights available').replace(chr(10), '<br>')}
-                            </div>
-                            """, unsafe_allow_html=True)
+                            st.markdown("#### 🚀 Smart Strategy Insights")
+                            st.markdown(f"<div class='insight-box'>{data.get('ai_insights', 'No insights available').replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
 
                         if data.get("sample_data"):
                             with st.expander("👀 View Raw Sample Data"):
