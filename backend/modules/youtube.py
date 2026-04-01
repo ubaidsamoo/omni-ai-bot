@@ -42,7 +42,7 @@ class YouTubeModule:
         except NoTranscriptFound:
             pass
         except TranscriptsDisabled:
-            raise ValueError("❌ Transcripts are disabled for this video.")
+            pass
 
         try:
             transcripts_obj = YouTubeTranscriptApi.list_transcripts(video_id)
@@ -55,6 +55,8 @@ class YouTubeModule:
                     t = list(transcripts_obj)[0]
             fetched = t.fetch()
             return " ".join(entry['text'] for entry in fetched)
+        except (TranscriptsDisabled, NoTranscriptFound):
+            return "TRANSCRIPT_ERROR: YouTube transcripts disabled or blocked."
         except Exception as e:
             return f"TRANSCRIPT_ERROR: {str(e)}"
 
