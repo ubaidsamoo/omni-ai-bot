@@ -16,6 +16,8 @@ langchain-community==0.3.7
 
 # ── YouTube ─────────────────────────────────────────────────────────────────
 youtube-transcript-api==0.6.3
+beautifulsoup4==4.12.3
+requests==2.32.3
 
 # ── Data Science ────────────────────────────────────────────────────────────
 pandas==2.2.3

@@ -8,6 +8,8 @@ import google.generativeai as genai
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 import asyncio
 import re
+import requests
+from bs4 import BeautifulSoup
 
 
 class YouTubeModule:
@@ -48,7 +50,22 @@ class YouTubeModule:
             fetched = t.fetch()
             return " ".join(entry['text'] for entry in fetched)
         except Exception as e:
-            raise ValueError(f"❌ No transcript available.\nReason: {str(e)}")
+            return f"TRANSCRIPT_ERROR: {str(e)}"
+
+    def _fetch_metadata(self, video_id: str) -> dict:
+        """Fetch Title/Description from YouTube HTML as a fallback"""
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        try:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            title = soup.find("title").text.replace(" - YouTube", "") if soup.find("title") else "Unknown Title"
+            description = ""
+            desc_tag = soup.find("meta", attrs={"name": "description"})
+            if desc_tag:
+                description = desc_tag.get("content", "")
+            return {"title": title, "description": description}
+        except:
+            return {"title": "Unknown Video", "description": "No description found."}
 
     async def get_transcript_only(self, url: str) -> str:
         video_id = self._extract_video_id(url)
@@ -57,12 +74,24 @@ class YouTubeModule:
     async def analyze(self, url: str, task: str = "summarize", question: str = "") -> dict:
         video_id = self._extract_video_id(url)
         video_url = f"https://www.youtube.com/watch?v={video_id}"
+        
         transcript = await self.get_transcript_only(url)
-
-        max_chars = 28000
-        transcript_for_ai = transcript[:max_chars] + "\n\n[... truncated ...]" if len(transcript) > max_chars else transcript
-
-        prompt = self._build_prompt(task, transcript_for_ai, question)
+        
+        is_fallback = False
+        if "TRANSCRIPT_ERROR" in transcript:
+            is_fallback = True
+            metadata = await asyncio.to_thread(self._fetch_metadata, video_id)
+            source_content = f"VIDEO TITLE: {metadata['title']}\nVIDEO DESCRIPTION: {metadata['description']}"
+            transcript_preview = f"⚠️ Note: Transcripts were blocked/disabled. Analyzing based on Metadata.\n\nDescription: {metadata['description'][:500]}"
+            transcript_len = 0
+            prompt = f"The transcript for this video is unavailable. Analyze this video based on its title and description.\n\n{source_content}\n\nTask: {task}. {question}"
+        else:
+            is_fallback = False
+            transcript_len = len(transcript)
+            transcript_preview = transcript[:500] + "..." if len(transcript) > 500 else transcript
+            max_chars = 28000
+            transcript_for_ai = transcript[:max_chars]
+            prompt = self._build_prompt(task, transcript_for_ai, question)
 
         model = genai.GenerativeModel(self.model_name)
         try:
@@ -79,8 +108,8 @@ class YouTubeModule:
             "video_id": video_id,
             "video_url": video_url,
             "task": task,
-            "transcript_length": len(transcript),
-            "transcript_preview": transcript[:500] + "..." if len(transcript) > 500 else transcript,
+            "transcript_length": transcript_len,
+            "transcript_preview": transcript_preview,
             "analysis": analysis_text,
             "question": question if task == "qa" else None
         }
