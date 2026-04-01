@@ -2,6 +2,12 @@
 YouTube Module - Deep Dive Video Analysis
 ==========================================
 YouTube transcript extract karke Google Gemini se analyze karta hai.
+
+# ── YouTube ─────────────────────────────────────────────────────────────────
+# youtube-transcript-api==0.6.3
+# beautifulsoup4==4.12.3
+# requests==2.32.3
+# lxml==5.3.0
 """
 
 import google.generativeai as genai
@@ -56,16 +62,16 @@ class YouTubeModule:
         """Fetch Title/Description from YouTube HTML as a fallback"""
         url = f"https://www.youtube.com/watch?v={video_id}"
         try:
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            title = soup.find("title").text.replace(" - YouTube", "") if soup.find("title") else "Unknown Title"
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}, timeout=10)
+            soup = BeautifulSoup(r.text, 'lxml')
+            title = soup.find("title").text.replace(" - YouTube", "") if soup.find("title") else f"Video {video_id}"
             description = ""
             desc_tag = soup.find("meta", attrs={"name": "description"})
             if desc_tag:
                 description = desc_tag.get("content", "")
             return {"title": title, "description": description}
-        except:
-            return {"title": "Unknown Video", "description": "No description found."}
+        except Exception as e:
+            return {"title": f"Video {video_id}", "description": f"Metadata fetch failed: {str(e)}"}
 
     async def get_transcript_only(self, url: str) -> str:
         video_id = self._extract_video_id(url)
