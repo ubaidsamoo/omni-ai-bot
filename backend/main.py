@@ -40,7 +40,7 @@ if not api_key or api_key == "YOUR_GOOGLE_API_KEY_HERE":
         "Key FREE milti hai: https://aistudio.google.com/app/apikey"
     )
 
-gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
+gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
 print(f"✅ Using model: {gemini_model}")
 
 chat_module     = ChatModule(api_key, gemini_model)

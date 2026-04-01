@@ -45,9 +45,9 @@ class ChatModule:
         except Exception as e:
             err_msg = str(e).lower()
             if "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
-                ai_response = "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai. Kuch dair baad try karein ya nai API key laga kar check karein."
+                ai_response = f"🙏 Maaf kijiye limit exhaust wagera: [Detail: {str(e)[:150]}]"
             else:
-                ai_response = f"⚠️ Oops! Ek technical error aagaya: {str(e)[:50]}..."
+                ai_response = f"⚠️ Oops! API error aagaya: {str(e)[:150]}..."
 
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": ai_response})
