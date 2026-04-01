@@ -18,11 +18,21 @@ st.markdown("""
     /* Premium Header */
     .main-header { 
         background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); 
-        padding: 40px 20px; border-radius: 20px; margin-bottom: 30px; text-align: center;
-        box-shadow: 0 15px 35px rgba(79,70,229,0.3); border: 1px solid rgba(255,255,255,0.1);
+        padding: 20px; border-radius: 15px; margin-bottom: 20px; text-align: center;
+        box-shadow: 0 10px 30px rgba(79,70,229,0.3); border: 1px solid rgba(255,255,255,0.1);
     }
-    .main-header h1 { color: white; font-size: 3.5rem; font-weight: 800; margin: 0; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
-    .main-header p { color: rgba(255,255,255,0.8); font-size: 1.1rem; margin-top: 10px; }
+    .main-header h1 { color: white; font-size: 2.2rem; font-weight: 800; margin: 0; }
+    .chat-user { 
+        background: #2563eb; color: white; padding: 12px 18px; 
+        border-radius: 20px 20px 2px 20px; margin: 10px 0; 
+        max-width: 85%; margin-left: auto; box-shadow: 0 4px 10px rgba(37,99,235,0.2);
+    }
+    .chat-ai { 
+        background: #1e293b; border: 1px solid #334155; color: #f1f5f9; 
+        padding: 12px 18px; border-radius: 20px 20px 20px 2px; margin: 10px 0; 
+        max-width: 85%; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    .stChatInput { position: fixed; bottom: 20px; }
 
     /* Glassmorphism Cards */
     .dashboard-card {
@@ -116,7 +126,8 @@ if selected_page == "💬 AI Chat":
     st.markdown("## 💬 Conversational AI")
     st.markdown("Talk with Roman Urdu Omni Ai")
 
-    chat_container = st.container()
+    # Chat Container with Fixed Height (No more scrolling page)
+    chat_container = st.container(height=450)
     with chat_container:
         if not st.session_state.chat_history:
             st.markdown("""
@@ -125,22 +136,27 @@ if selected_page == "💬 AI Chat":
                 <p>Hello! Ask Anything!</p>
             </div>
             """, unsafe_allow_html=True)
-
-        for msg in st.session_state.chat_history:
-            if msg["role"] == "user":
-                st.markdown(f"<div class='chat-user'><strong>You:</strong><br>{msg['content']}</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div class='chat-ai'><strong>🤖 Omni AI:</strong><br>{msg['content']}</div>", unsafe_allow_html=True)
+        else:
+            for msg in st.session_state.chat_history:
+                if msg["role"] == "user":
+                    st.markdown(f"<div class='chat-user'>👤 <strong>You:</strong><br>{msg['content']}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div class='chat-ai'>🤖 <strong>Omni AI:</strong><br>{msg['content']}</div>", unsafe_allow_html=True)
 
     st.divider()
 
     # FIX: st.chat_input - Enter se send, no send_btn
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        user_input = st.chat_input("What Your Today Goal... (Enter to send)")
-    with col2:
-        st.write("")
-        clear_btn = st.button("Clear 🗑️", use_container_width=True)
+    # Fixed Input Box
+    user_input = st.chat_input("What is your goal today? (Enter to send)")
+    
+    # Optional Clear button in a separate small row
+    if st.button("Clear Chat 🗑️"):
+        st.session_state.chat_history = []
+        try:
+            requests.post(f"{BACKEND_URL}/chat/clear", data={"session_id": st.session_state.session_id})
+        except Exception:
+            pass
+        st.rerun()
 
     # FIX: sirf user_input check karo, send_btn nahi
     if user_input:
@@ -160,14 +176,6 @@ if selected_page == "💬 AI Chat":
             except Exception as e:
                 st.error(f"Connection error: {e}")
                 st.session_state.chat_history.pop()
-        st.rerun()
-
-    if clear_btn:
-        st.session_state.chat_history = []
-        try:
-            requests.post(f"{BACKEND_URL}/chat/clear", data={"session_id": st.session_state.session_id})
-        except Exception:
-            pass
         st.rerun()
 
 
