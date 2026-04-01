@@ -47,7 +47,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     st.divider()
-    selected_page = st.radio("Navigate", ["💬 AI Chat", "🎥 YouTube Deep Dive", "🖼️ Image Vision", "📄 PDF Q&A", "📊 Data Analysis"], label_visibility="collapsed")
+    selected_page = st.radio("Navigate", ["💬 AI Chat", "🎥 YouTube Deep Dive", "📊 Data Analysis"], label_visibility="collapsed")
     st.divider()
     st.markdown("**🔗 Backend Status**")
     try:
@@ -65,7 +65,7 @@ with st.sidebar:
 st.markdown("""
 <div class='main-header'>
     <h1>🤖 Omni AI</h1>
-    <p>Multimodal Intelligence • Chat • Vision • Documents • YouTube • Data</p>
+    <p>Multimodal Intelligence • Chat • YouTube • Data</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -206,139 +206,7 @@ elif selected_page == "🎥 YouTube Deep Dive":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE 3: IMAGE VISION
-# ══════════════════════════════════════════════════════════════════════════════
-elif selected_page == "🖼️ Image Vision":
-    st.markdown("## 🖼️ Image Vision AI")
-    st.markdown("Image upload karo - Gemini ka powerful vision model analyze karega!")
-
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        uploaded_image = st.file_uploader("📸 Image Upload karo", type=["jpg", "jpeg", "png", "gif", "webp", "bmp"])
-        if uploaded_image:
-            image = Image.open(uploaded_image)
-            st.image(image, caption="Uploaded Image", use_container_width=True)
-            st.markdown(f"""
-            <div class='feature-card'>
-                📁 <strong>File:</strong> {uploaded_image.name}<br>
-                📐 <strong>Size:</strong> {image.size[0]} × {image.size[1]} px<br>
-                🎨 <strong>Mode:</strong> {image.mode}
-            </div>
-            """, unsafe_allow_html=True)
-
-    with col2:
-        vision_task = st.selectbox("🔍 Analysis Type", ["Full Analysis", "Object Detection", "OCR (Text Extraction)", "Chart/Graph Analysis", "Custom Prompt"])
-        custom_prompt = ""
-        if vision_task == "Custom Prompt":
-            custom_prompt = st.text_area("Custom Prompt", placeholder="Apna specific question likhо...", height=100)
-
-        analyze_vision_btn = st.button("🔍 Analyze Image", use_container_width=True)
-
-        if analyze_vision_btn and uploaded_image:
-            prompts_map = {
-                "Full Analysis": "",
-                "Object Detection": "Detect and list ALL objects in this image with their location and attributes.",
-                "OCR (Text Extraction)": "Extract ALL text visible in this image. Preserve formatting.",
-                "Chart/Graph Analysis": "Analyze this chart/graph and provide detailed insights.",
-                "Custom Prompt": custom_prompt
-            }
-            with st.spinner("👁️ Gemini image dekh raha hai..."):
-                try:
-                    uploaded_image.seek(0)
-                    response = requests.post(
-                        f"{BACKEND_URL}/vision/analyze",
-                        files={"image": (uploaded_image.name, uploaded_image.read(), uploaded_image.type)},
-                        data={"prompt": prompts_map[vision_task]},
-                        timeout=60
-                    )
-                    if response.status_code == 200:
-                        analysis = response.json()["analysis"]
-                        st.markdown("### 🤖 AI Analysis Result")
-                        st.markdown(f"<div class='feature-card'>{analysis.replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
-                        st.text_area("📋 Raw Output (for copying)", value=analysis, height=200)
-                    else:
-                        st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
-        elif analyze_vision_btn and not uploaded_image:
-            st.warning("⚠️ Pehle image upload karo!")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 4: PDF Q&A
-# ══════════════════════════════════════════════════════════════════════════════
-elif selected_page == "📄 PDF Q&A":
-    st.markdown("## 📄 PDF Question & Answer")
-    st.markdown("PDF upload karo, FAISS mein index hoga, phir koi bhi question pucho!")
-
-    st.markdown("### Step 1️⃣ PDF Upload & Index")
-    pdf_file = st.file_uploader("📎 PDF File Upload karo", type=["pdf"])
-
-    if pdf_file:
-        upload_btn = st.button("⚡ Process & Index PDF")
-        if upload_btn:
-            with st.spinner("📖 PDF padha ja raha hai aur index ho raha hai..."):
-                try:
-                    response = requests.post(
-                        f"{BACKEND_URL}/document/upload",
-                        files={"pdf": (pdf_file.name, pdf_file.read(), "application/pdf")},
-                        timeout=120
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        st.success(data.get("status", "✅ Success!"))
-                        st.session_state.uploaded_doc_id = data.get("doc_id")
-                        st.session_state.uploaded_doc_name = data.get("filename")
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("📄 Pages", data.get("page_count", "N/A"))
-                        with col2:
-                            st.metric("🔪 Chunks", data.get("chunk_count", "N/A"))
-                        with col3:
-                            st.metric("📝 Characters", f"{data.get('text_length', 0):,}")
-                        st.info(f"📋 **Doc ID**: `{data.get('doc_id')}`")
-                    else:
-                        st.error(f"❌ {response.json().get('detail', 'Upload failed')}")
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
-
-    st.divider()
-    st.markdown("### Step 2️⃣ Ask Questions")
-
-    if st.session_state.uploaded_doc_id:
-        st.success(f"✅ Ready: **{st.session_state.uploaded_doc_name}**")
-        qa_question = st.text_area("❓ Apna Question Likhо", placeholder="Document ke baare mein kuch bhi pucho...", height=80)
-        ask_btn = st.button("🔍 Ask AI", use_container_width=True)
-
-        if ask_btn and qa_question:
-            with st.spinner("🧠 Document se jawab dhundha ja raha hai..."):
-                try:
-                    response = requests.post(
-                        f"{BACKEND_URL}/document/query",
-                        data={"question": qa_question, "doc_id": st.session_state.uploaded_doc_id},
-                        timeout=60
-                    )
-                    if response.status_code == 200:
-                        answer = response.json()["answer"]
-                        st.markdown("### 💡 Answer")
-                        st.markdown(f"""
-                        <div class='feature-card'>
-                            <strong>Q:</strong> {qa_question}<br><br>
-                            <strong>A:</strong> {answer}
-                        </div>
-                        """, unsafe_allow_html=True)
-                    else:
-                        st.error(f"❌ {response.json().get('detail', 'Query failed')}")
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
-        elif ask_btn:
-            st.warning("⚠️ Question likhо!")
-    else:
-        st.info("⬆️ Pehle Step 1 mein PDF upload karo!")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 5: DATA ANALYSIS
+# PAGE 3: DATA ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════════
 elif selected_page == "📊 Data Analysis":
     st.markdown("## 📊 AI-Powered Data Analysis")

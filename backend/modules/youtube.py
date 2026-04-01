@@ -65,7 +65,15 @@ class YouTubeModule:
         prompt = self._build_prompt(task, transcript_for_ai, question)
 
         model = genai.GenerativeModel(self.model_name)
-        response = await model.generate_content_async(prompt)
+        try:
+            response = await model.generate_content_async(prompt)
+            analysis_text = response.text
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
+                analysis_text = "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai. Kuch dair baad try karein ya nai API key laga kar check karein."
+            else:
+                analysis_text = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
 
         return {
             "video_id": video_id,
@@ -73,7 +81,7 @@ class YouTubeModule:
             "task": task,
             "transcript_length": len(transcript),
             "transcript_preview": transcript[:500] + "..." if len(transcript) > 500 else transcript,
-            "analysis": response.text,
+            "analysis": analysis_text,
             "question": question if task == "qa" else None
         }
 

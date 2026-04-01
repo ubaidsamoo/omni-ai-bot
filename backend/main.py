@@ -13,8 +13,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from modules.chat import ChatModule
-from modules.vision import VisionModule
-from modules.document import DocumentModule
 from modules.youtube import YouTubeModule
 from modules.data_analysis import DataAnalysisModule
 
@@ -46,8 +44,6 @@ gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
 print(f"✅ Using model: {gemini_model}")
 
 chat_module     = ChatModule(api_key, gemini_model)
-vision_module   = VisionModule(api_key, gemini_model)
-document_module = DocumentModule(api_key, gemini_model)
 youtube_module  = YouTubeModule(api_key, gemini_model)
 data_module     = DataAnalysisModule(api_key, gemini_model)
 
@@ -70,36 +66,6 @@ async def chat_message(message: str = Form(...), session_id: str = Form(default=
 async def clear_chat(session_id: str = Form(default="default")):
     chat_module.clear_history(session_id)
     return {"status": "✅ Chat history cleared"}
-
-
-@app.post("/vision/analyze")
-async def analyze_image(image: UploadFile = File(...), prompt: str = Form(default="")):
-    try:
-        image_bytes = await image.read()
-        result = await vision_module.analyze_image(image_bytes, image.content_type, prompt)
-        return {"analysis": result, "filename": image.filename}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/document/upload")
-async def upload_pdf(pdf: UploadFile = File(...)):
-    try:
-        pdf_bytes = await pdf.read()
-        result = await document_module.process_pdf(pdf_bytes, pdf.filename)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/document/query")
-async def query_document(question: str = Form(...), doc_id: str = Form(...)):
-    try:
-        answer = await document_module.query(question, doc_id)
-        return {"answer": answer, "doc_id": doc_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/youtube/analyze")
 async def analyze_youtube(url: str = Form(...), task: str = Form(default="summarize"), question: str = Form(default="")):

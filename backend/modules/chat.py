@@ -39,8 +39,15 @@ class ChatModule:
             gemini_history.append({"role": role, "parts": [msg["content"]]})
 
         chat = model.start_chat(history=gemini_history)
-        response = await chat.send_message_async(message)
-        ai_response = response.text
+        try:
+            response = await chat.send_message_async(message)
+            ai_response = response.text
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
+                ai_response = "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai. Kuch dair baad try karein ya nai API key laga kar check karein."
+            else:
+                ai_response = f"⚠️ Oops! Ek technical error aagaya: {str(e)[:50]}..."
 
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": ai_response})

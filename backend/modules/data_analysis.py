@@ -160,14 +160,22 @@ Provide:
 ## ⚠️ Data Quality Issues"""
 
         model = genai.GenerativeModel(self.model_name)
-        response = await model.generate_content_async(prompt)
+        try:
+            response = await model.generate_content_async(prompt)
+            ai_insights = response.text
+        except Exception as e:
+            err_msg = str(e).lower()
+            if "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
+                ai_insights = "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai. Kuch dair baad try karein ya nai API key laga kar check karein."
+            else:
+                ai_insights = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
 
         return {
             "status": "✅ Analysis complete!",
             "shape": stats['shape'],
             "columns": stats['columns'],
             "null_counts": stats['null_counts'],
-            "ai_insights": response.text,
+            "ai_insights": ai_insights,
             "chart_base64": chart_b64,
             "sample_data": stats['sample_data']
         }
