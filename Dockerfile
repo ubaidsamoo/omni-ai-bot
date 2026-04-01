@@ -22,4 +22,4 @@ EXPOSE 7860
 # Command to run BOTH FastAPI and Streamlit in the same container
 # 1. FastAPI port 8000 (background)
 # 2. Streamlit port 7860 (foreground)
-CMD bash -c "cd backend && uvicorn main:app --host 127.0.0.1 --port 8000 & sleep 3 && cd .. && streamlit run frontend/app.py --server.port 7860 --server.address 0.0.0.0"
+CMD bash -c "cd backend && uvicorn main:app --host 127.0.0.1 --port 8000 & sleep 3 && streamlit run frontend/app.py --server.port 7860 --server.address 0.0.0.0"
