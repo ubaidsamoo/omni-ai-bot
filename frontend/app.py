@@ -22,7 +22,8 @@ st.markdown("""
     .chat-ai { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #e0e0e0; padding: 12px 16px; border-radius: 18px 18px 18px 4px; margin: 8px 0; max-width: 80%; }
     .stButton > button { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; padding: 10px 24px; font-weight: 600; }
     hr { border-color: rgba(255,255,255,0.1); }
-    [data-testid="stMetric"] { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; }
+    [data-testid="stMetric"] { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .metric-card { background: rgba(255,255,255,0.05); border-top: 4px solid #667eea; padding: 15px; border-radius: 5px; text-align: center; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -181,7 +182,12 @@ elif selected_page == "🎥 YouTube Deep Dive":
                         st.metric("📝 Transcript Length", f"{transcript_len:,} chars")
                     with col3:
                         st.metric("📖 Approx. Words", f"~{transcript_len // 5:,}")
+                    
                     st.divider()
+                    
+                    if is_fallback:
+                        st.warning("📡 YouTube Transcripts are currently blocked/disabled by the server. Switching to AI Analysis based on Video Metadata (Title/Description).")
+                    
                     st.markdown("### 🤖 AI Analysis")
                     st.markdown(data.get("analysis", "No analysis available"))
                     with st.expander("📜 View Transcript Preview"):
@@ -220,7 +226,7 @@ elif selected_page == "📊 Data Analysis":
             value="Give me a complete statistical summary and the most important insights from this dataset.",
             height=80
         )
-        analyze_data_btn = st.button("📊 Analyze Data", use_container_width=True)
+        analyze_data_btn = st.button("📊 Run Analysis", use_container_width=True)
 
         if analyze_data_btn:
             with st.spinner("🔄 Data analyze ho raha hai aur charts ban rahe hain..."):
@@ -234,23 +240,48 @@ elif selected_page == "📊 Data Analysis":
                     if response.status_code == 200:
                         data = response.json()
                         shape = data.get("shape", {})
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("📊 Total Rows", f"{shape.get('rows', 0):,}")
-                        with col2:
-                            st.metric("📋 Columns", shape.get("columns", 0))
-                        with col3:
+                        
+                        # --- POWER BI DASHBOARD LAYOUT ---
+                        st.markdown("### 📈 Data Analytics Dashboard")
+                        
+                        # KPI Metrics Row
+                        m1, m2, m3, m4 = st.columns(4)
+                        with m1:
+                            st.markdown("<div class='metric-card'><strong>Total Rows</strong><br><h2>{:,}</h2></div>".format(shape.get('rows', 0)), unsafe_allow_html=True)
+                        with m2:
+                            st.markdown("<div class='metric-card'><strong>Columns</strong><br><h2>{}</h2></div>".format(shape.get('columns', 0)), unsafe_allow_html=True)
+                        with m3:
                             null_total = sum(data.get("null_counts", {}).values())
-                            st.metric("❌ Missing Values", null_total)
-                        if data.get("chart_base64"):
-                            st.markdown("### 📈 Visualizations")
-                            chart_bytes = base64.b64decode(data["chart_base64"])
-                            chart_image = Image.open(io.BytesIO(chart_bytes))
-                            st.image(chart_image, use_container_width=True)
-                        st.markdown("### 🤖 AI Insights")
-                        st.markdown(data.get("ai_insights", "No insights available"))
+                            st.markdown("<div class='metric-card'><strong>Missing Vals</strong><br><h2>{}</h2></div>".format(null_total), unsafe_allow_html=True)
+                        with m4:
+                            st.markdown("<div class='metric-card'><strong>Status</strong><br><h2 style='color:#4CAF50;'>Ready</h2></div>", unsafe_allow_html=True)
+                        
+                        st.write("")
+                        st.divider()
+
+                        # Grid Layout: Charts and Insights
+                        col_chart, col_insights = st.columns([1.3, 1])
+                        
+                        with col_chart:
+                            if data.get("chart_base64"):
+                                st.markdown("#### 📊 Visual Distribution")
+                                chart_bytes = base64.b64decode(data["chart_base64"])
+                                chart_image = Image.open(io.BytesIO(chart_bytes))
+                                try:
+                                    st.image(chart_image, use_column_width=True)
+                                except:
+                                    st.image(chart_image) # Fallback if even col_width fails
+                        
+                        with col_insights:
+                            st.markdown("#### 💡 AI Strategic Insights")
+                            st.markdown(f"""
+                            <div style='background: rgba(102,126,234,0.1); border-left: 5px solid #667eea; padding: 20px; border-radius: 10px; min-height: 400px;'>
+                                {data.get('ai_insights', 'No insights available').replace(chr(10), '<br>')}
+                            </div>
+                            """, unsafe_allow_html=True)
+
                         if data.get("sample_data"):
-                            with st.expander("👀 Sample Data (First 5 Rows)"):
+                            with st.expander("👀 View Raw Sample Data"):
                                 import pandas as pd
                                 df_sample = pd.DataFrame(data["sample_data"])
                                 st.dataframe(df_sample, use_container_width=True)
