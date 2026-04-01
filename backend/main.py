@@ -59,7 +59,9 @@ async def chat_message(message: str = Form(...), session_id: str = Form(default=
         response = await chat_module.chat(message, session_id)
         return {"response": response, "session_id": session_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Instead of 500, return error as response text for easier debug
+        error_msg = f"❌ Server Error: {str(e)}"
+        return {"response": error_msg, "session_id": session_id}
 
 
 @app.post("/chat/clear")

@@ -11,6 +11,7 @@ from typing import Dict, List
 class ChatModule:
 
     def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
+        self.api_key = api_key
         genai.configure(api_key=api_key)
         self.model_name = model_name
         self.sessions: Dict[str, List] = {}
