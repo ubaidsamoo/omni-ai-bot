@@ -111,29 +111,28 @@ with st.sidebar:
     st.divider()
     st.markdown("<p style='color:#666; font-size:0.75rem; text-align:center;'>Omni AI v2.0 | Built with ❤️</p>", unsafe_allow_html=True)
 
-st.markdown("""
-<div class='main-header'>
-    <h1>🤖 Omni AI</h1>
-    <p>Multimodal Intelligence • Chat • YouTube • Data</p>
-</div>
-""", unsafe_allow_html=True)
+# Header - Show on all pages EXCEPT Chat page for that "Gemini/ChatGPT" look
+if selected_page != "💬 AI Chat":
+    st.markdown("""
+    <div class='main-header'>
+        <h1>🤖 Omni AI</h1>
+        <p>Multimodal Intelligence • Chat • YouTube • Data</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE 1: AI CHAT
 # ══════════════════════════════════════════════════════════════════════════════
 if selected_page == "💬 AI Chat":
-    st.markdown("## 💬 Conversational AI")
-    st.markdown("Talk with Roman Urdu Omni Ai")
-
-    # Chat Container with Fixed Height (No more scrolling page)
-    chat_container = st.container(height=450)
+    # No extra titles here for that clean look
+    chat_container = st.container(height=600, border=False)
     with chat_container:
         if not st.session_state.chat_history:
             st.markdown("""
-            <div style='text-align:center; padding:40px; color:#666;'>
-                <div style='font-size:3rem;'>👋</div>
-                <p>Hello! Ask Anything!</p>
+            <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; margin-top: 100px;'>
+                <h1 style='font-size: 3.5rem; margin-bottom: 0;'>🤖 How can I help?</h1>
+                <p style='color: #888; font-size: 1.2rem;'>Ask Omni AI anything in Roman Urdu or English.</p>
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -183,8 +182,7 @@ if selected_page == "💬 AI Chat":
 # PAGE 2: YOUTUBE DEEP DIVE
 # ══════════════════════════════════════════════════════════════════════════════
 elif selected_page == "🎥 YouTube Deep Dive":
-    st.markdown("## 🎥 YouTube Deep Dive")
-    st.markdown("Kisi bhi YouTube video ka transcript extract karo aur AI se deep analysis karo!")
+    st.markdown("## 🎥 YouTube Summarizer")
 
     yt_url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
 
