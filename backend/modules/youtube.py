@@ -123,47 +123,25 @@ class YouTubeModule:
         }
 
     def _build_prompt(self, task: str, transcript: str, question: str = "") -> str:
-        base = f"You are analyzing a YouTube video transcript.\n\n---TRANSCRIPT---\n{transcript}\n---END---\n\n"
+        base = f"You are a YouTube Analyst (NoteGPT Style). Analyze the transcript and provide a BILINGUAL REPORT (English & Roman Urdu).\n\nTranscript: {transcript[:25000]}\n\n"
 
-        prompts = {
-            "summarize": base + """Provide a comprehensive summary:
+        if task == "qa":
+            return base + f"Answer this question in English and Roman Urdu: {question}"
 
-## 📋 Video Summary
-### Overview
-### Main Topics Covered
-### Detailed Summary
-### Key Takeaways (5-7 points)
-### Who Should Watch This?""",
+        return base + """Provide a deep dive in exactly this format:
 
-            "qa": base + f"""Answer this question based on the video:
+## 📝 1. EXECUTIVE SUMMARY (English & Roman Urdu)
+[English summary here]
+---
+[Roman Urdu summary yahan likhein]
 
-**Question**: {question}
+## 🎯 2. KEY TAKEAWAYS (Bullet Points)
+* [English Points]
+* [Roman Urdu Points]
 
-Be specific, reference transcript parts when helpful.""",
+## 📑 3. STRATEGIC CHAPTER BREAKDOWN
+[Timestamp/Topic - English]
+---
+[Timestamp/Topic - Roman Urdu]
 
-            "key_points": base + """Extract key points:
-
-## 🎯 Key Points
-### Critical Insights (3-5)
-### Supporting Points (5-10)
-### Practical Applications
-### Notable Quotes
-### One-Sentence Summary""",
-
-            "sentiment": base + """Analyze sentiment:
-
-## 😊 Sentiment Analysis
-### Overall Tone
-### Emotional Journey
-### Speaker's Attitude
-### Positive vs Negative Balance
-### Final Verdict""",
-
-            "chapters": base + """Break into chapters:
-
-## 📑 Video Chapters
-For each chapter: **Title**, **Summary** (2-3 sentences), **Key Points** (2-3 bullets)
-End with **Complete Overview**."""
-        }
-
-        return prompts.get(task, prompts["summarize"])
+Ensure the Roman Urdu is readable and natural (e.g., 'Video mein bataya gaya hai ke...')."""

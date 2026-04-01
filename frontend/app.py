@@ -184,58 +184,40 @@ if selected_page == "💬 AI Chat":
 elif selected_page == "🎥 YouTube Deep Dive":
     st.markdown("## 🎥 YouTube Summarizer")
 
-    yt_url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        analysis_type = st.selectbox(
-            "📋 Analysis Type",
-            options=["summarize", "key_points", "chapters", "sentiment", "qa"],
-            format_func=lambda x: {
-                "summarize": "📝 Complete Summary",
-                "key_points": "🎯 Key Points & Takeaways",
-                "chapters": "📑 Chapter Breakdown",
-                "sentiment": "😊 Sentiment Analysis",
-                "qa": "❓ Question & Answer"
-            }[x]
-        )
-    with col2:
-        user_question = ""
-        if analysis_type == "qa":
-            user_question = st.text_input("Your Question", placeholder="Video ke baare mein kya jaanna chahte ho?")
-        else:
-            st.info("💡 Analysis type select karo - AI automatic kaam karega!")
-
-    analyze_btn = st.button("🔍 Analyze Video", use_container_width=True)
+    yt_url = st.text_input("🔗 YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
+    
+    st.info("💡 NoteGPT Mode: Deep Dive in English & Roman Urdu")
+    user_question = st.text_input("❓ Optional: Ask a specific question about the video", placeholder="E.g., What did he say about X?")
+    
+    analyze_btn = st.button("🚀 Run NoteGPT Deep Dive", use_container_width=True)
 
     if analyze_btn and yt_url:
         with st.spinner("📥 Transcript extract ho raha hai... phir AI analyze karega..."):
             try:
                 response = requests.post(
                     f"{BACKEND_URL}/youtube/analyze",
-                    data={"url": yt_url, "task": analysis_type, "question": user_question},
+                    data={"url": yt_url, "task": "summarize", "question": user_question},
                     timeout=120
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("🎥 Video ID", data.get("video_id", "N/A"))
-                    with col2:
-                        transcript_len = data.get("transcript_length", 0)
-                        st.metric("📝 Transcript Length", f"{transcript_len:,} chars")
-                    with col3:
-                        st.metric("📖 Approx. Words", f"~{transcript_len // 5:,}")
+                    st.success("✅ Deep Dive Complete!")
                     
-                    st.divider()
+                    # NoteGPT Layout using Tabs
+                    tab1, tab2, tab3 = st.tabs(["📊 Comprehensive Report", "🎯 Key Takeaways", "📜 Full Transcript"])
                     
-                    if is_fallback:
+                    with tab1:
+                        st.markdown(data.get("analysis", "No analysis available"))
+                    
+                    with tab2:
+                        st.markdown("### 🎯 Key Points Summary")
+                        st.info("Bilingual insights generated based on video context.")
+                        st.write(data.get("analysis", "").split("## 🎯")[1] if "## 🎯" in data.get("analysis", "") else "Key points section found in the report.")
+                    
+                    with tab3:
+                        st.text_area("Transcript Preview", value=data.get("transcript_preview", ""), height=300, disabled=True)
                         st.warning("📡 YouTube Transcripts are currently blocked/disabled by the server. Switching to AI Analysis based on Video Metadata (Title/Description).")
                     
-                    st.markdown("### 🤖 AI Analysis")
-                    st.markdown(data.get("analysis", "No analysis available"))
-                    with st.expander("📜 View Transcript Preview"):
-                        st.text_area("Transcript (Preview)", value=data.get("transcript_preview", ""), height=200, disabled=True)
                     st.markdown(f"🔗 [Video Link]({data.get('video_url', yt_url)})")
                 else:
                     st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
