@@ -1,0 +1,32 @@
+# Omni AI - Gemini Edition Requirements
+
+# ── Core Framework ──────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+python-dotenv==1.0.1
+
+# ── Google Gemini ──────────────────────────────────────────────────────────
+google-generativeai>=0.8.0
+
+# ── LangChain + Gemini + FAISS ─────────────────────────────────────────────
+langchain==0.3.7
+langchain-google-genai>=2.0.0
+langchain-community==0.3.7
+faiss-cpu==1.9.0
+
+# ── PDF Processing ──────────────────────────────────────────────────────────
+pypdf==4.3.1
+
+# ── YouTube ─────────────────────────────────────────────────────────────────
+youtube-transcript-api==0.6.3
+
+# ── Data Science ────────────────────────────────────────────────────────────
+pandas==2.2.3
+matplotlib==3.9.2
+numpy==1.26.4
+Pillow==10.4.0
+
+# ── Frontend ────────────────────────────────────────────────────────────────
+streamlit==1.39.0
+requests==2.32.3
