@@ -108,7 +108,7 @@ class YouTubeModule:
         except Exception as e:
             err_msg = str(e).lower()
             if "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
-                analysis_text = "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai. Kuch dair baad try karein ya nai API key laga kar check karein."
+                analysis_text = "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai (429 Quota). Kuch dair baad try karein ya nai API key laga kar check karein."
             else:
                 analysis_text = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
 
@@ -130,20 +130,16 @@ class YouTubeModule:
 
         return base + """Provide a deep dive in exactly this format:
 
-## 📊 1. COMPREHENSIVE REPORT (Bilingual Overview)
-[Provide a detailed paragraph in English summarizing the video.]
+## 📊 1. COMPREHENSIVE REPORT
+[English: Write a high-quality summary explaining the video content in detail.]
 ---
-[Provide the same summary in natural, fluid Roman Urdu. 'Video mein hamen ye sikhne ko milta hai ke...']
+[Roman Urdu: Write the same summary in natural, fluid Roman Urdu. 'Is video mein hamen...']
 
-## 🎯 2. KEY TAKEAWAYS (Bullet Points)
-* [English Point 1]
-* [Roman Urdu Point 1]
-* [English Point 2]
-* [Roman Urdu Point 2]
+## 🎯 2. KEY TAKEAWAYS
+* [English: Core point 1]
+* [Roman Urdu: Point 1 ka Roman Urdu tarjuma]
+* [English: Core point 2]
+* [Roman Urdu: Point 2 ka Roman Urdu tarjuma]
 
-## 📑 3. STRATEGIC ANALYSIS / CHAPTERS
-[Timestamp/Topic - English]
 ---
-[Timestamp/Topic - Roman Urdu]
-
 💡 Ensure the Roman Urdu is readable and natural. Don't use difficult Urdu words, use the language as people chat (Roman Urdu style)."""

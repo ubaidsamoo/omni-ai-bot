@@ -203,31 +203,43 @@ elif selected_page == "🎥 YouTube Deep Dive":
                     data = response.json()
                     st.success("✅ Deep Dive Complete!")
                     
-                    # NoteGPT Layout using Tabs
-                    tab1, tab2, tab3 = st.tabs(["📊 Comprehensive Report", "🎯 Key Takeaways", "📜 Full Transcript"])
+                    # NoteGPT Layout - Single Page Scrolling Report
+                    st.markdown("---")
                     
-                    with tab1:
-                        st.markdown(data.get("analysis", "No analysis available"))
+                    # 📊 Comprehensive Report Section
+                    st.markdown("### 📊 Comprehensive Report")
+                    analysis_text = data.get("analysis", "")
                     
-                    with tab2:
-                        st.markdown("### 🎯 Key Takeaways (Bilingual)")
-                        st.info("Direct insights from the video in English & Roman Urdu.")
-                        analysis_text = data.get("analysis", "")
-                        if "## 🎯" in analysis_text:
-                            takeaways = analysis_text.split("## 🎯")[1]
-                            if "## 📑" in takeaways: # Split from next section if exists
-                                takeaways = takeaways.split("## 📑")[0]
-                            st.write(takeaways)
-                        else:
-                            st.write("Key takeaways section found in the full report below.")
+                    # If analysis has sections, split them or show as is
+                    report_part = analysis_text
+                    if "## 🎯" in analysis_text:
+                        report_part = analysis_text.split("## 🎯")[0]
                     
-                    with tab3:
-                        st.markdown("### 📜 Full Transcript Preview")
+                    st.markdown(report_part)
+                    
+                    st.markdown("---")
+                    
+                    # 🎯 Key Takeaways Section
+                    st.markdown("### 🎯 Key Takeaways")
+                    if "## 🎯" in analysis_text:
+                        takeaways = analysis_text.split("## 🎯")[1]
+                        # Remove any footer or follow-up if AI added any
+                        st.markdown(takeaways)
+                    else:
+                        st.info("Key takeaways are included in the report above.")
+                        
+                    st.markdown("---")
+                    
+                    # 📜 Full Transcript Section
+                    st.markdown("### 📜 Full Transcript")
+                    with st.expander("👀 View Full Transcript Preview"):
                         st.text_area("Transcript Extract", value=data.get("transcript_preview", ""), height=300, disabled=True)
                         if "TRANSCRIPT_ERROR" in data.get("transcript_preview", ""):
                             st.warning("⚠️ YouTube Transcripts were blocked/disabled. Analysis is based on metadata.")
                     
-                    st.divider()
+                    st.markdown("---")
+                    
+                    # 🔗 Video Link
                     st.markdown(f"🔗 **Video Link:** [{data.get('video_url', yt_url)}]({data.get('video_url', yt_url)})")
                 else:
                     st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
