@@ -23,6 +23,7 @@ class YouTubeModule:
     def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
         genai.configure(api_key=api_key)
         self.model_name = model_name
+        self.cache = {} # Simple URL-based cache to save Quota
 
     def _extract_video_id(self, url: str) -> str:
         patterns = [r'(?:v=|/v/|youtu\.be/|/embed/|/shorts/)([a-zA-Z0-9_-]{11})']
@@ -61,32 +62,56 @@ class YouTubeModule:
             return f"TRANSCRIPT_ERROR: {str(e)}"
 
     def _fetch_metadata(self, video_id: str) -> dict:
-        """Fetch Title/Description from YouTube HTML as a fallback"""
-        url = f"https://www.youtube.com/watch?v={video_id}"
+        """Fetch Title/Description using oEmbed (Reliable) and HTML Scraping (Fallback)"""
+        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        metadata = {"title": f"Video {video_id}", "description": ""}
+        
+        # 1. Try oEmbed for Title (Very reliable)
         try:
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}, timeout=10)
-            # Use html.parser instead of lxml for better compatibility
+            resp = requests.get(oembed_url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                metadata["title"] = data.get("title", metadata["title"])
+        except Exception:
+            pass
+
+        # 2. Try Scrape for Description (Tricky, YouTube blocks simple requests)
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
+        try:
+            r = requests.get(url, headers=headers, timeout=10)
+            if "consent.youtube.com" in r.url:
+                # Redirected to consent page, try again with a cookie or just skip
+                pass
+            
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # Title extraction with fallbacks
-            title = soup.find("title").text.replace(" - YouTube", "") if soup.find("title") else f"Video {video_id}"
-            if not title or title == f"Video {video_id}":
-                og_title = soup.find("meta", property="og:title")
-                if og_title:
-                    title = og_title.get("content", f"Video {video_id}")
-
-            # Description extraction with fallbacks
-            description = ""
+            # Try meta description first
             desc_tag = soup.find("meta", attrs={"name": "description"})
-            if not desc_tag:
-                desc_tag = soup.find("meta", property="og:description")
-            
             if desc_tag:
-                description = desc_tag.get("content", "")
-            
-            return {"title": title, "description": description}
+                desc = desc_tag.get("content", "")
+                if "Enjoy the videos and music you love" not in desc:
+                    metadata["description"] = desc
+
+            # If description still generic, try scraping 'ytInitialData' JSON
+            if not metadata["description"] or "Enjoy the videos" in metadata["description"]:
+                match = re.search(r'shortDescription":"(.*?)"', r.text)
+                if match:
+                    metadata["description"] = match.group(1).encode().decode('unicode_escape')
+
+            # Final Title Fallback
+            if metadata["title"] == f"Video {video_id}":
+                title_tag = soup.find("title")
+                if title_tag:
+                    metadata["title"] = title_tag.text.replace(" - YouTube", "")
+
         except Exception as e:
-            return {"title": f"Video {video_id}", "description": f"Metadata fetch failed: {str(e)}"}
+            metadata["description"] = f"Metadata fetch failed: {str(e)}"
+            
+        return metadata
 
     async def get_transcript_only(self, url: str) -> str:
         video_id = self._extract_video_id(url)
@@ -96,6 +121,11 @@ class YouTubeModule:
         video_id = self._extract_video_id(url)
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         
+        # 0. Quota Protection: Check Cache
+        cache_key = f"{video_id}_{task}_{question}"
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
         transcript = await self.get_transcript_only(url)
         
         if "TRANSCRIPT_ERROR" in transcript:
@@ -103,8 +133,9 @@ class YouTubeModule:
             source_content = f"VIDEO TITLE: {metadata['title']}\nVIDEO DESCRIPTION: {metadata['description']}"
             transcript_preview = f"⚠️ Note: Transcripts were blocked/disabled. Analyzing based on Metadata.\n\nDescription: {metadata['description'][:500]}"
             transcript_len = 0
-            # Even for fallback, use build_prompt to enforce NoteGPT style
-            prompt = self._build_prompt(task, source_content, question)
+            
+            # Stronger fallback prompt
+            prompt = f"The transcript for this video is blocked or unavailable. I need you to perform a DEEP DIVE analysis based ONLY on the Title and Description below. Follow the NoteGPT format strictly.\n\n{source_content}\n\nTask: {task}. {question}"
         else:
             transcript_len = len(transcript)
             transcript_preview = transcript[:500] + "..." if len(transcript) > 500 else transcript
@@ -123,7 +154,7 @@ class YouTubeModule:
             else:
                 analysis_text = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
 
-        return {
+        result = {
             "video_id": video_id,
             "video_url": video_url,
             "task": task,
@@ -132,6 +163,12 @@ class YouTubeModule:
             "analysis": analysis_text,
             "question": question if task == "qa" else None
         }
+        
+        # Save to cache if successful
+        if "Maaf kijiye" not in analysis_text:
+            self.cache[cache_key] = result
+            
+        return result
 
     def _build_prompt(self, task: str, transcript: str, question: str = "") -> str:
         base = f"You are a YouTube Analyst (NoteGPT Style). Analyze the transcript and provide a HIGH-QUALITY BILINGUAL DEEP DIVE (English & Roman Urdu).\n\nTranscript: {transcript[:25000]}\n\n"
