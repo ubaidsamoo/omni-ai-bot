@@ -6,23 +6,23 @@ import time
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FREE TIER QUOTA GUIDE (gemini models — least to most expensive):
-#   gemini-1.5-flash-8b  → 1500 RPD, 4M TPM  ← sabse safe, use as primary
-#   gemini-1.5-flash     → 1500 RPD, 1M TPM  ← fallback #1
-#   gemini-2.0-flash     → 1500 RPD, 1M TPM  ← fallback #2
-# Strategy: primary model try karo, 429 aane pe next model pe jump karo.
+# FREE TIER QUOTA (March 2026 — verified from Google docs):
+#   gemini-2.5-flash-lite → 15 RPM, 1000 RPD  ← sabse zyada quota, PRIMARY
+#   gemini-2.5-flash      → 10 RPM,  250 RPD  ← fallback #1
+#   gemini-2.5-pro        →  5 RPM,  100 RPD  ← fallback #2 (last resort)
+# NOTE: gemini-2.0-flash March 2026 mein retire ho gaya — use mat karo!
 # ─────────────────────────────────────────────────────────────────────────────
 
 FALLBACK_MODELS = [
-    "gemini-2.0-flash-lite",   # Primary — fastest + most quota on free tier
-    "gemini-2.0-flash",        # Fallback 1
-    "gemini-1.5-flash",        # Fallback 2
+    "gemini-2.5-flash-lite-preview-06-17",  # Primary — max free quota
+    "gemini-2.5-flash",                      # Fallback 1
+    "gemini-2.5-pro",                        # Fallback 2 (last resort)
 ]
 
 
 class YouTubeModule:
 
-    def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash-lite"):
+    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash-lite-preview-06-17"):
         genai.configure(api_key=api_key)
         self.model_name = model_name
         self.cache = {}
@@ -43,17 +43,18 @@ class YouTubeModule:
 
     def _fetch_via_supadata(self, video_id: str) -> str:
         """
-        Supadata API — working endpoint, no API key needed for basic use.
-        Returns plain text transcript.
+        Supadata — reliable third-party transcript API, HF pe kaam karta hai.
+        No API key needed for basic use.
         """
         try:
-            url = f"https://supadata.ai/api/youtube/transcript?videoId={video_id}"
+            # Format 1: REST endpoint
+            url = f"https://api.supadata.ai/v1/youtube/transcript"
+            params = {"url": f"https://www.youtube.com/watch?v={video_id}", "format": "text"}
             headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=headers, timeout=12)
+            resp = requests.get(url, params=params, headers=headers, timeout=12)
             if resp.status_code == 200:
                 data = resp.json()
-                # Try multiple response formats
-                content = data.get("transcript") or data.get("content") or data.get("text") or ""
+                content = data.get("content") or data.get("transcript") or data.get("text") or ""
                 if isinstance(content, list):
                     content = " ".join(
                         item.get("text", "") if isinstance(item, dict) else str(item)
@@ -63,38 +64,68 @@ class YouTubeModule:
                     return str(content)
         except Exception:
             pass
+
+        try:
+            # Format 2: alternate endpoint
+            url = f"https://api.supadata.ai/v1/youtube/transcript?videoId={video_id}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=12)
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("content") or data.get("transcript") or data.get("text") or ""
+                if content and len(str(content)) > 100:
+                    return str(content)
+        except Exception:
+            pass
+
         return ""
 
     def _fetch_via_ytt_proxy(self, video_id: str) -> str:
         """
-        Kiri API — free, no key, works on cloud servers.
+        Multiple free proxy endpoints — HF cloud IPs pe kaam karte hain.
         """
-        try:
-            url = f"https://yt-transcript-api.vercel.app/api?videoId={video_id}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=headers, timeout=12)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list) and len(data) > 0:
-                    return " ".join(item.get("text", "") for item in data)
-                elif isinstance(data, dict):
-                    content = data.get("transcript") or data.get("text") or ""
-                    if content:
-                        return content
-        except Exception:
-            pass
+        proxies = [
+            # Proxy 1: tactiq
+            {
+                "url": f"https://tactiq-apps-prod.tactiq.io/transcript",
+                "method": "POST",
+                "json": {"videoUrl": f"https://www.youtube.com/watch?v={video_id}", "langCode": "en"},
+                "parser": lambda d: " ".join(s.get("text", "") for s in d.get("captions", []))
+            },
+            # Proxy 2: kome
+            {
+                "url": f"https://kome.ai/api/tools/youtube-transcript",
+                "method": "POST",
+                "json": {"video_id": video_id},
+                "parser": lambda d: d.get("transcript", "")
+            },
+        ]
 
-        # Second proxy attempt
-        try:
-            url = f"https://transcripts.youtubeapi.com/{video_id}"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=headers, timeout=12)
-            if resp.status_code == 200:
-                data = resp.json()
-                if isinstance(data, list):
-                    return " ".join(item.get("text", "") for item in data)
-        except Exception:
-            pass
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+
+        for proxy in proxies:
+            try:
+                if proxy["method"] == "POST":
+                    resp = requests.post(
+                        proxy["url"],
+                        json=proxy["json"],
+                        headers=headers,
+                        timeout=15
+                    )
+                else:
+                    resp = requests.get(proxy["url"], headers=headers, timeout=15)
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    result = proxy["parser"](data)
+                    if result and len(str(result)) > 100:
+                        return str(result)
+            except Exception:
+                continue
 
         return ""
 
