@@ -70,9 +70,9 @@ async def clear_chat(session_id: str = Form(default="default")):
     return {"status": "✅ Chat history cleared"}
 
 @app.post("/youtube/analyze")
-async def analyze_youtube(url: str = Form(...), task: str = Form(default="summarize"), question: str = Form(default="")):
+async def analyze_youtube(url: str = Form(...), task: str = Form(default="summarize"), question: str = Form(default=""), manual_content: str = Form(default="")):
     try:
-        result = await youtube_module.analyze(url, task, question)
+        result = await youtube_module.analyze(url, task, question, manual_content)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

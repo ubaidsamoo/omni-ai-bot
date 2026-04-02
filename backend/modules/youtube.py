@@ -127,33 +127,43 @@ class YouTubeModule:
         video_id = self._extract_video_id(url)
         return await asyncio.to_thread(self._fetch_transcript, video_id)
 
-    async def analyze(self, url: str, task: str = "summarize", question: str = "") -> dict:
+    async def analyze(self, url: str, task: str = "summarize", question: str = "", manual_content: str = "") -> dict:
         video_id = self._extract_video_id(url)
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         
         # 0. Quota Protection: Check Cache
-        cache_key = f"{video_id}_{task}_{question}"
+        cache_key = f"{video_id}_{task}_{question}_{len(manual_content)}"
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        transcript = await self.get_transcript_only(url)
-        
-        if "TRANSCRIPT_ERROR" in transcript:
-            metadata = await asyncio.to_thread(self._fetch_metadata, video_id)
-            source_content = f"VIDEO TITLE: {metadata['title']}\nVIDEO DESCRIPTION: {metadata['description']}"
-            transcript_preview = f"⚠️ Note: Transcripts were blocked/disabled. Analyzing based on Metadata.\n\nDescription: {metadata['description'][:500]}"
-            transcript_len = 0
-            
-            # Stronger fallback prompt
-            prompt = f"The transcript for this video is blocked or unavailable. I need you to perform a DEEP DIVE analysis based ONLY on the Title and Description below. Follow the NoteGPT format strictly.\n\n{source_content}\n\nTask: {task}. {question}"
-        else:
+        # 1. Manual Mode: If user provides content, skip scraping
+        if manual_content:
+            transcript = manual_content
             transcript_len = len(transcript)
-            transcript_preview = transcript[:500] + "..." if len(transcript) > 500 else transcript
-            max_chars = 28000
-            transcript_for_ai = transcript[:max_chars]
-            prompt = self._build_prompt(task, transcript_for_ai, question)
+            transcript_preview = f"📜 Manual Mode Enabled. Content Length: {transcript_len} characters."
+        else:
+            # Auto Mode: Scraping
+            transcript = await self.get_transcript_only(url)
+            
+            if "TRANSCRIPT_ERROR" in transcript:
+                metadata = await asyncio.to_thread(self._fetch_metadata, video_id)
+                source_content = f"VIDEO TITLE: {metadata['title']}\nVIDEO DESCRIPTION: {metadata['description']}"
+                transcript_preview = f"⚠️ Note: Transcripts were blocked/disabled. Analyzing based on Metadata.\n\nDescription: {metadata['description'][:500]}"
+                transcript_len = 0
+                
+                # Stronger fallback prompt
+                transcript = source_content
+            else:
+                transcript_len = len(transcript)
+                transcript_preview = transcript[:500] + "..." if len(transcript) > 500 else transcript
+                max_chars = 28000
+                transcript = transcript[:max_chars]
+
+        # 2. Quota Protection: Brief pause before Gemini call
+        await asyncio.sleep(2)
 
         model = genai.GenerativeModel(self.model_name)
+        prompt = self._build_prompt(task, transcript, question)
         try:
             response = await model.generate_content_async(prompt)
             analysis_text = response.text

@@ -189,19 +189,30 @@ elif selected_page == "🎥 YouTube Deep Dive":
     st.info("NoteGPT Mode: Deep Dive in English & Roman Urdu")
     user_question = st.text_input("❓ Optional: Ask a specific question about the video", placeholder="E.g., What did he say about X?")
     
+    manual_mode = st.checkbox("🛠️ Manual Mode (Use this if Auto-Fetch fails)", value=False)
+    manual_content = ""
+    if manual_mode:
+        manual_content = st.text_area("📋 Paste Video Description or Transcript here", height=150, placeholder="Paste details here to bypass YouTube blocking...")
+
     analyze_btn = st.button("🚀 Run NoteGPT Deep Dive", use_container_width=True)
 
     if analyze_btn and yt_url:
-        with st.spinner("📥 Transcript extract ho raha hai... phir AI analyze karega..."):
+        with st.status("🔍 Deep Dive in progress...") as status:
             try:
+                st.write("📤 Sending request to AI...")
                 response = requests.post(
                     f"{BACKEND_URL}/youtube/analyze",
-                    data={"url": yt_url, "task": "summarize", "question": user_question},
+                    data={
+                        "url": yt_url, 
+                        "task": "summarize", 
+                        "question": user_question,
+                        "manual_content": manual_content
+                    },
                     timeout=120
                 )
                 if response.status_code == 200:
                     data = response.json()
-                    st.success("✅ Deep Dive Complete!")
+                    status.update(label="✅ Deep Dive Complete!", state="complete")
                     
                     # NoteGPT Layout - Single Page Scrolling Report
                     st.markdown("---")
