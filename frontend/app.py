@@ -295,7 +295,7 @@ elif selected_page == "🎥 YouTube Deep Dive":
             with col_thumb:
                 thumb = r.get("metadata", {}).get("thumbnail", "")
                 if thumb:
-                    st.image(thumb, use_container_width=True)
+                    st.image(thumb, use_column_width=True)
             with col_info:
                 title = r.get("metadata", {}).get("title", "")
                 channel = r.get("metadata", {}).get("description", "")
@@ -466,7 +466,7 @@ elif selected_page == "📊 Data Analysis":
                                 st.markdown("#### 📊 Analysis Snapshot")
                                 chart_bytes = base64.b64decode(data["chart_base64"])
                                 chart_image = Image.open(io.BytesIO(chart_bytes))
-                                st.image(chart_image, use_container_width=True)
+                                st.image(chart_image, use_column_width=True)
                         with col_insights:
                             st.markdown("#### 🚀 Smart Strategy Insights")
                             st.markdown(f"<div class='insight-box'>{data.get('ai_insights', 'No insights available').replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
