@@ -65,12 +65,25 @@ class YouTubeModule:
         url = f"https://www.youtube.com/watch?v={video_id}"
         try:
             r = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}, timeout=10)
-            soup = BeautifulSoup(r.text, 'lxml')
+            # Use html.parser instead of lxml for better compatibility
+            soup = BeautifulSoup(r.text, 'html.parser')
+            
+            # Title extraction with fallbacks
             title = soup.find("title").text.replace(" - YouTube", "") if soup.find("title") else f"Video {video_id}"
+            if not title or title == f"Video {video_id}":
+                og_title = soup.find("meta", property="og:title")
+                if og_title:
+                    title = og_title.get("content", f"Video {video_id}")
+
+            # Description extraction with fallbacks
             description = ""
             desc_tag = soup.find("meta", attrs={"name": "description"})
+            if not desc_tag:
+                desc_tag = soup.find("meta", property="og:description")
+            
             if desc_tag:
                 description = desc_tag.get("content", "")
+            
             return {"title": title, "description": description}
         except Exception as e:
             return {"title": f"Video {video_id}", "description": f"Metadata fetch failed: {str(e)}"}
@@ -85,16 +98,14 @@ class YouTubeModule:
         
         transcript = await self.get_transcript_only(url)
         
-        is_fallback = False
         if "TRANSCRIPT_ERROR" in transcript:
-            is_fallback = True
             metadata = await asyncio.to_thread(self._fetch_metadata, video_id)
             source_content = f"VIDEO TITLE: {metadata['title']}\nVIDEO DESCRIPTION: {metadata['description']}"
             transcript_preview = f"⚠️ Note: Transcripts were blocked/disabled. Analyzing based on Metadata.\n\nDescription: {metadata['description'][:500]}"
             transcript_len = 0
-            prompt = f"The transcript for this video is unavailable. Analyze this video based on its title and description.\n\n{source_content}\n\nTask: {task}. {question}"
+            # Even for fallback, use build_prompt to enforce NoteGPT style
+            prompt = self._build_prompt(task, source_content, question)
         else:
-            is_fallback = False
             transcript_len = len(transcript)
             transcript_preview = transcript[:500] + "..." if len(transcript) > 500 else transcript
             max_chars = 28000
