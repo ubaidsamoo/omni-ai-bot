@@ -4,6 +4,7 @@ import re
 import requests
 import time
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FREE TIER QUOTA GUIDE (gemini models — least to most expensive):
 #   gemini-1.5-flash-8b  → 1500 RPD, 4M TPM  ← sabse safe, use as primary
@@ -13,15 +14,15 @@ import time
 # ─────────────────────────────────────────────────────────────────────────────
 
 FALLBACK_MODELS = [
-    "gemini-1.5-flash-8b",   # Primary — fastest + most quota on free tier
-    "gemini-1.5-flash",      # Fallback 1
-    "gemini-2.0-flash",      # Fallback 2
+    "gemini-2.0-flash-lite",   # Primary — fastest + most quota on free tier
+    "gemini-2.0-flash",        # Fallback 1
+    "gemini-1.5-flash",        # Fallback 2
 ]
 
 
 class YouTubeModule:
 
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-flash-8b"):
+    def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash-lite"):
         genai.configure(api_key=api_key)
         self.model_name = model_name
         self.cache = {}
@@ -42,40 +43,59 @@ class YouTubeModule:
 
     def _fetch_via_supadata(self, video_id: str) -> str:
         """
-        Supadata public API — HuggingFace cloud IPs pe kaam karta hai.
-        Free tier: 100 requests/day — kaafi hai testing ke liye.
-        Docs: https://supadata.ai
+        Supadata API — working endpoint, no API key needed for basic use.
+        Returns plain text transcript.
         """
         try:
-            url = f"https://api.supadata.ai/v1/youtube/transcript?videoId={video_id}&text=true"
-            resp = requests.get(url, timeout=12)
+            url = f"https://supadata.ai/api/youtube/transcript?videoId={video_id}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=12)
             if resp.status_code == 200:
                 data = resp.json()
-                # Response format: {"content": "...", "lang": "en"}
-                content = data.get("content", "")
-                if content and len(content) > 100:
-                    return content
+                # Try multiple response formats
+                content = data.get("transcript") or data.get("content") or data.get("text") or ""
+                if isinstance(content, list):
+                    content = " ".join(
+                        item.get("text", "") if isinstance(item, dict) else str(item)
+                        for item in content
+                    )
+                if content and len(str(content)) > 100:
+                    return str(content)
         except Exception:
             pass
         return ""
 
     def _fetch_via_ytt_proxy(self, video_id: str) -> str:
         """
-        ytt-api — open source proxy, HF pe bhi kaam karta hai.
-        Endpoint: https://www.youtube-transcript.io (free, no key needed)
+        Kiri API — free, no key, works on cloud servers.
         """
         try:
-            url = "https://www.youtube-transcript.io/api/transcript"
-            params = {"videoId": video_id, "lang": "en"}
+            url = f"https://yt-transcript-api.vercel.app/api?videoId={video_id}"
             headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, params=params, headers=headers, timeout=12)
+            resp = requests.get(url, headers=headers, timeout=12)
             if resp.status_code == 200:
                 data = resp.json()
-                # Format: [{"text": "...", "start": 0.0}, ...]
                 if isinstance(data, list) and len(data) > 0:
+                    return " ".join(item.get("text", "") for item in data)
+                elif isinstance(data, dict):
+                    content = data.get("transcript") or data.get("text") or ""
+                    if content:
+                        return content
+        except Exception:
+            pass
+
+        # Second proxy attempt
+        try:
+            url = f"https://transcripts.youtubeapi.com/{video_id}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=12)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list):
                     return " ".join(item.get("text", "") for item in data)
         except Exception:
             pass
+
         return ""
 
     def _fetch_via_library(self, video_id: str) -> str:
@@ -113,9 +133,9 @@ class YouTubeModule:
     def _fetch_transcript(self, video_id: str) -> str:
         """
         3-layer transcript fetching:
-        1. Supadata API  (HF-friendly, free)
-        2. youtube-transcript.io proxy (HF-friendly, free)
-        3. youtube-transcript-api library (local pe best, HF pe fallback)
+        1. Supadata API      (HF-friendly, free, no key)
+        2. Multiple proxies  (HF-friendly, free, no key)
+        3. Direct library    (local pe best, HF pe last resort)
         """
         # Layer 1: Supadata
         result = self._fetch_via_supadata(video_id)
