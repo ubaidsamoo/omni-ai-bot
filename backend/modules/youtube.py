@@ -62,7 +62,7 @@ class YouTubeModule:
             return f"TRANSCRIPT_ERROR: {str(e)}"
 
     def _fetch_metadata(self, video_id: str) -> dict:
-        """Fetch Title/Description using oEmbed (Reliable) and HTML Scraping (Fallback)"""
+        """Fetch Title/Description using multiple robust scraping patterns"""
         oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
         metadata = {"title": f"Video {video_id}", "description": ""}
         
@@ -75,41 +75,51 @@ class YouTubeModule:
         except Exception:
             pass
 
-        # 2. Try Scrape for Description (Tricky, YouTube blocks simple requests)
+        # 2. Try Advanced Scrape for Description
         url = f"https://www.youtube.com/watch?v={video_id}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9"
         }
         try:
             r = requests.get(url, headers=headers, timeout=10)
-            if "consent.youtube.com" in r.url:
-                # Redirected to consent page, try again with a cookie or just skip
-                pass
+            html = r.text
             
-            soup = BeautifulSoup(r.text, 'html.parser')
-            
-            # Try meta description first
+            # Pattern 1: Meta Description
+            soup = BeautifulSoup(html, 'html.parser')
             desc_tag = soup.find("meta", attrs={"name": "description"})
             if desc_tag:
                 desc = desc_tag.get("content", "")
-                if "Enjoy the videos and music you love" not in desc:
+                if "Enjoy the videos" not in desc:
                     metadata["description"] = desc
 
-            # If description still generic, try scraping 'ytInitialData' JSON
+            # Pattern 2: ytInitialData shortDescription
             if not metadata["description"] or "Enjoy the videos" in metadata["description"]:
-                match = re.search(r'shortDescription":"(.*?)"', r.text)
-                if match:
-                    metadata["description"] = match.group(1).encode().decode('unicode_escape')
+                m = re.search(r'"shortDescription":"(.*?)"', html)
+                if m:
+                    metadata["description"] = m.group(1).encode().decode('unicode_escape')
 
-            # Final Title Fallback
+            # Pattern 3: ytInitialPlayerResponse description
+            if not metadata["description"] or "Enjoy the videos" in metadata["description"]:
+                m = re.search(r'"description":\{"simpleText":"(.*?)"\}', html)
+                if m:
+                    metadata["description"] = m.group(1).encode().decode('unicode_escape')
+
+            # Pattern 4: Broad JSON search for description
+            if not metadata["description"] or "Enjoy the videos" in metadata["description"]:
+                m = re.search(r'"description":"(.*?)"', html)
+                if m:
+                    metadata["description"] = m.group(1).encode().decode('unicode_escape')
+
+            # Title Fallback
             if metadata["title"] == f"Video {video_id}":
-                title_tag = soup.find("title")
-                if title_tag:
-                    metadata["title"] = title_tag.text.replace(" - YouTube", "")
+                m = re.search(r'"title":"(.*?)"', html)
+                if m:
+                    metadata["title"] = m.group(1).encode().decode('unicode_escape')
 
         except Exception as e:
-            metadata["description"] = f"Metadata fetch failed: {str(e)}"
+            metadata["description"] = f"Metadata fetch error: {str(e)}"
             
         return metadata
 
