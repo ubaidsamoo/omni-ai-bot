@@ -197,6 +197,7 @@ elif selected_page == "🎥 YouTube Deep Dive":
     analyze_btn = st.button("🚀 Run NoteGPT Deep Dive", use_container_width=True)
 
     if analyze_btn and yt_url:
+        data = None
         with st.status("🔍 Deep Dive in progress...") as status:
             try:
                 st.write("📤 Sending request to AI...")
@@ -213,51 +214,54 @@ elif selected_page == "🎥 YouTube Deep Dive":
                 if response.status_code == 200:
                     data = response.json()
                     status.update(label="✅ Deep Dive Complete!", state="complete")
-                    
-                    # NoteGPT Layout - Single Page Scrolling Report
-                    st.markdown("---")
-                    
-                    # 📊 Comprehensive Report Section
-                    st.markdown("### 📊 Comprehensive Report")
-                    analysis_text = data.get("analysis", "")
-                    
-                    # If analysis has sections, split them or show as is
-                    report_part = analysis_text
-                    if "## 🎯" in analysis_text:
-                        report_part = analysis_text.split("## 🎯")[0]
-                    
-                    st.markdown(report_part)
-                    
-                    st.markdown("---")
-                    
-                    # 🎯 Key Takeaways Section
-                    st.markdown("### 🎯 Key Takeaways")
-                    if "## 🎯" in analysis_text:
-                        takeaways = analysis_text.split("## 🎯")[1]
-                        # Remove any footer or follow-up if AI added any
-                        st.markdown(takeaways)
-                    else:
-                        st.info("Key takeaways are included in the report above.")
-                        
-                    st.markdown("---")
-                    
-                    # 📜 Full Transcript Section
-                    st.markdown("### 📜 Full Transcript")
-                    with st.expander("👀 View Full Transcript Preview"):
-                        st.text_area("Transcript Extract", value=data.get("transcript_preview", ""), height=300, disabled=True)
-                        if "TRANSCRIPT_ERROR" in data.get("transcript_preview", ""):
-                            st.warning("⚠️ YouTube Transcripts were blocked/disabled. Analysis is based on metadata.")
-                    
-                    st.markdown("---")
-                    
-                    # 🔗 Video Link
-                    st.markdown(f"🔗 **Video Link:** [{data.get('video_url', yt_url)}]({data.get('video_url', yt_url)})")
                 else:
                     st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
+                    status.update(label="❌ Failed", state="error")
             except requests.Timeout:
                 st.error("⏱️ Timeout! Video bahut lamba ho sakta hai.")
+                status.update(label="⏱️ Timeout", state="error")
             except Exception as e:
                 st.error(f"❌ Connection Error: {e}")
+                status.update(label="❌ connection Error", state="error")
+
+        if data:
+            # NoteGPT Layout - Single Page Scrolling Report
+            st.markdown("---")
+            
+            # 📊 Comprehensive Report Section
+            st.markdown("### 📊 Comprehensive Report")
+            analysis_text = data.get("analysis", "")
+            
+            # If analysis has sections, split them or show as is
+            report_part = analysis_text
+            if "## 🎯" in analysis_text:
+                report_part = analysis_text.split("## 🎯")[0]
+            
+            st.markdown(report_part)
+            
+            st.markdown("---")
+            
+            # 🎯 Key Takeaways Section
+            st.markdown("### 🎯 Key Takeaways")
+            if "## 🎯" in analysis_text:
+                takeaways = analysis_text.split("## 🎯")[1]
+                st.markdown(takeaways)
+            else:
+                st.info("Key takeaways are included in the report above.")
+                
+            st.markdown("---")
+            
+            # 📜 Full Transcript Section
+            st.markdown("### 📜 Full Transcript")
+            with st.expander("👀 View Full Transcript Preview"):
+                st.text_area("Transcript Extract", value=data.get("transcript_preview", ""), height=300, disabled=True)
+                if "TRANSCRIPT_ERROR" in data.get("transcript_preview", ""):
+                    st.warning("⚠️ YouTube Transcripts were blocked/disabled. Analysis is based on metadata.")
+            
+            st.markdown("---")
+            
+            # 🔗 Video Link
+            st.markdown(f"🔗 **Video Link:** [{data.get('video_url', yt_url)}]({data.get('video_url', yt_url)})")
     elif analyze_btn and not yt_url:
         st.warning("⚠️ Pehle YouTube URL enter karo!")
 
