@@ -1,15 +1,3 @@
-"""
-YouTube Module - Deep Dive Video Analysis
-==========================================
-YouTube transcript extract karke Google Gemini se analyze karta hai.
-
-# ── YouTube ─────────────────────────────────────────────────────────────────
-# youtube-transcript-api==0.6.3
-# beautifulsoup4==4.12.3
-# requests==2.32.3
-# lxml==5.3.0
-"""
-
 import google.generativeai as genai
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 import asyncio
@@ -34,7 +22,7 @@ class YouTubeModule:
         raise ValueError(f"❌ Invalid YouTube URL: {url}")
 
     def _fetch_transcript(self, video_id: str) -> str:
-        """Sync transcript fetch - asyncio.to_thread mein run hoga"""
+        """Sync transcript fetch - asyncio.to_thread mein run hoga."""
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(
                 video_id, languages=['en', 'en-US', 'en-GB', 'hi', 'ur']
@@ -62,7 +50,7 @@ class YouTubeModule:
             return f"TRANSCRIPT_ERROR: {str(e)}"
 
     def _fetch_metadata(self, video_id: str) -> dict:
-        """Fetch Title/Description using multiple robust scraping patterns"""
+        """Fetch Title/Description using multiple robust scraping patterns."""
         oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
         metadata = {"title": f"Video {video_id}", "description": ""}
         
@@ -164,15 +152,27 @@ class YouTubeModule:
 
         model = genai.GenerativeModel(self.model_name)
         prompt = self._build_prompt(task, transcript, question)
-        try:
-            response = await model.generate_content_async(prompt)
-            analysis_text = response.text
-        except Exception as e:
-            err_msg = str(e).lower()
-            if "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
-                analysis_text = "🙏 Maaf kijiye, abhi AI service thori busy hai ya limit poori ho gayi hai (429 Quota). Kuch dair baad try karein ya nai API key laga kar check karein."
-            else:
-                analysis_text = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
+        
+        # 3. Retry Loop for 429 Quota Protection (Senior Level Fix)
+        analysis_text = ""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = await model.generate_content_async(prompt)
+                analysis_text = response.text
+                break # Success!
+            except Exception as e:
+                err_msg = str(e).lower()
+                if ("429" in err_msg or "exhausted" in err_msg or "quota" in err_msg) and attempt < max_retries - 1:
+                    # Wait 5-7 seconds and retry
+                    wait_time = 5 + (attempt * 2) 
+                    await asyncio.sleep(wait_time)
+                    continue
+                elif "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
+                    analysis_text = "🙏 Maaf kijiye, abhi AI service thori busy hai (Quota Limit). 60 seconds baad try karein ya nai API key check karein."
+                else:
+                    analysis_text = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
+                break
 
         result = {
             "video_id": video_id,

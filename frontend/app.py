@@ -192,7 +192,8 @@ elif selected_page == "🎥 YouTube Deep Dive":
     manual_mode = st.checkbox("🛠️ Manual Mode (Use this if Auto-Fetch fails)", value=False)
     manual_content = ""
     if manual_mode:
-        manual_content = st.text_area("📋 Paste Video Description or Transcript here", height=150, placeholder="Paste details here to bypass YouTube blocking...")
+        st.warning("⚠️ Is box mein YouTube URL nahi balkay Video ki **Description** ya **Transcript** paste karein.")
+        manual_content = st.text_area("📋 Paste Detailed Text / Description / Transcript", height=150, placeholder="Paste data here (Copy from Video Description or Captions)...")
 
     analyze_btn = st.button("🚀 Run NoteGPT Deep Dive", use_container_width=True)
 
