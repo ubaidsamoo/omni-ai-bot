@@ -144,11 +144,12 @@ class YouTubeModule:
             else:
                 transcript_len = len(transcript)
                 transcript_preview = transcript[:500] + "..." if len(transcript) > 500 else transcript
-                max_chars = 28000
+                # Senior Fix: 15,000 chars is ~4k tokens, very safe for Gemini Free TPM limits.
+                max_chars = 15000 
                 transcript = transcript[:max_chars]
 
-        # 2. Quota Protection: Brief pause before Gemini call
-        await asyncio.sleep(2)
+        # 2. Quota Protection: 3s delay to ensure RPM limits are respected
+        await asyncio.sleep(3)
 
         model = genai.GenerativeModel(self.model_name)
         prompt = self._build_prompt(task, transcript, question)
@@ -164,12 +165,12 @@ class YouTubeModule:
             except Exception as e:
                 err_msg = str(e).lower()
                 if ("429" in err_msg or "exhausted" in err_msg or "quota" in err_msg) and attempt < max_retries - 1:
-                    # Wait 5-7 seconds and retry
-                    wait_time = 5 + (attempt * 2) 
+                    # Wait 7-10 seconds and retry
+                    wait_time = 7 + (attempt * 3) 
                     await asyncio.sleep(wait_time)
                     continue
                 elif "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
-                    analysis_text = "🙏 Maaf kijiye, abhi AI service thori busy hai (Quota Limit). 60 seconds baad try karein ya nai API key check karein."
+                    analysis_text = "🙏 Maaf kijiye, Quota Limit (429) hit ho gayi hai. Is video ka data bohot bada tha. Please 1 minute baad dobara koshish karein ya Manual Mode use karein."
                 else:
                     analysis_text = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
                 break
