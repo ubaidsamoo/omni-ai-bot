@@ -1,9 +1,8 @@
 import google.generativeai as genai
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
-import asyncio
 import re
 import requests
-from bs4 import BeautifulSoup
+import time
 
 
 class YouTubeModule:
@@ -11,7 +10,7 @@ class YouTubeModule:
     def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
         genai.configure(api_key=api_key)
         self.model_name = model_name
-        self.cache = {} # Simple URL-based cache to save Quota
+        self.cache = {}
 
     def _extract_video_id(self, url: str) -> str:
         patterns = [r'(?:v=|/v/|youtu\.be/|/embed/|/shorts/)([a-zA-Z0-9_-]{11})']
@@ -22,15 +21,13 @@ class YouTubeModule:
         raise ValueError(f"❌ Invalid YouTube URL: {url}")
 
     def _fetch_transcript(self, video_id: str) -> str:
-        """Sync transcript fetch - asyncio.to_thread mein run hoga."""
+        """Sync transcript fetch - no asyncio needed."""
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(
                 video_id, languages=['en', 'en-US', 'en-GB', 'hi', 'ur']
             )
             return " ".join(entry['text'] for entry in transcript_list)
-        except NoTranscriptFound:
-            pass
-        except TranscriptsDisabled:
+        except (NoTranscriptFound, TranscriptsDisabled):
             pass
 
         try:
@@ -50,129 +47,112 @@ class YouTubeModule:
             return f"TRANSCRIPT_ERROR: {str(e)}"
 
     def _fetch_metadata(self, video_id: str) -> dict:
-        """Fetch Title/Description using multiple robust scraping patterns."""
-        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        """Fetch Title using oEmbed (most reliable on cloud servers)."""
         metadata = {"title": f"Video {video_id}", "description": ""}
-        
-        # 1. Try oEmbed for Title (Very reliable)
+
+        # oEmbed: Most reliable, works even on HuggingFace cloud IPs
+        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
         try:
-            resp = requests.get(oembed_url, timeout=5)
+            resp = requests.get(oembed_url, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 metadata["title"] = data.get("title", metadata["title"])
+                metadata["description"] = data.get("author_name", "")
         except Exception:
             pass
 
-        # 2. Try Advanced Scrape for Description
-        url = f"https://www.youtube.com/watch?v={video_id}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-        try:
-            r = requests.get(url, headers=headers, timeout=10)
-            html = r.text
-            
-            # Pattern 1: Meta Description
-            soup = BeautifulSoup(html, 'html.parser')
-            desc_tag = soup.find("meta", attrs={"name": "description"})
-            if desc_tag:
-                desc = desc_tag.get("content", "")
-                if "Enjoy the videos" not in desc:
-                    metadata["description"] = desc
+        # Fallback: noembed (alternative oembed provider)
+        if metadata["title"] == f"Video {video_id}":
+            try:
+                noembed_url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
+                resp = requests.get(noembed_url, timeout=8)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    metadata["title"] = data.get("title", metadata["title"])
+            except Exception:
+                pass
 
-            # Pattern 2: ytInitialData shortDescription
-            if not metadata["description"] or "Enjoy the videos" in metadata["description"]:
-                m = re.search(r'"shortDescription":"(.*?)"', html)
-                if m:
-                    metadata["description"] = m.group(1).encode().decode('unicode_escape')
-
-            # Pattern 3: ytInitialPlayerResponse description
-            if not metadata["description"] or "Enjoy the videos" in metadata["description"]:
-                m = re.search(r'"description":\{"simpleText":"(.*?)"\}', html)
-                if m:
-                    metadata["description"] = m.group(1).encode().decode('unicode_escape')
-
-            # Pattern 4: Broad JSON search for description
-            if not metadata["description"] or "Enjoy the videos" in metadata["description"]:
-                m = re.search(r'"description":"(.*?)"', html)
-                if m:
-                    metadata["description"] = m.group(1).encode().decode('unicode_escape')
-
-            # Title Fallback
-            if metadata["title"] == f"Video {video_id}":
-                m = re.search(r'"title":"(.*?)"', html)
-                if m:
-                    metadata["title"] = m.group(1).encode().decode('unicode_escape')
-
-        except Exception as e:
-            metadata["description"] = f"Metadata fetch error: {str(e)}"
-            
         return metadata
 
-    async def get_transcript_only(self, url: str) -> str:
-        video_id = self._extract_video_id(url)
-        return await asyncio.to_thread(self._fetch_transcript, video_id)
+    def _safe_gemini_response(self, response) -> str:
+        """Safely extract text from Gemini response - prevents blank output."""
+        try:
+            # Method 1: Direct .text
+            if hasattr(response, 'text') and response.text:
+                return response.text
+        except Exception:
+            pass
 
-    async def analyze(self, url: str, task: str = "summarize", question: str = "", manual_content: str = "") -> dict:
+        try:
+            # Method 2: candidates -> parts
+            if response.candidates:
+                parts = response.candidates[0].content.parts
+                return " ".join(p.text for p in parts if hasattr(p, 'text'))
+        except Exception:
+            pass
+
+        return "⚠️ Response generate nahi ho saka. Dobara koshish karein."
+
+    def analyze(self, url: str, task: str = "summarize", question: str = "", manual_content: str = "") -> dict:
+        """
+        SYNC version - Streamlit ke saath perfectly kaam karta hai.
+        asyncio.to_thread ya await bilkul use nahi kiya.
+        """
         video_id = self._extract_video_id(url)
         video_url = f"https://www.youtube.com/watch?v={video_id}"
-        
-        # 0. Quota Protection: Check Cache
+
+        # Cache check
         cache_key = f"{video_id}_{task}_{question}_{len(manual_content)}"
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        # 1. Manual Mode: If user provides content, skip scraping
+        transcript_len = 0
+        transcript_preview = ""
+
+        # Manual mode
         if manual_content:
             transcript = manual_content
             transcript_len = len(transcript)
-            transcript_preview = f"📜 Manual Mode Enabled. Content Length: {transcript_len} characters."
+            transcript_preview = f"📜 Manual Mode. Content Length: {transcript_len} chars."
         else:
-            # Auto Mode: Scraping
-            transcript = await self.get_transcript_only(url)
-            
+            # Auto mode - sync call
+            transcript = self._fetch_transcript(video_id)
+
             if "TRANSCRIPT_ERROR" in transcript:
-                metadata = await asyncio.to_thread(self._fetch_metadata, video_id)
-                source_content = f"VIDEO TITLE: {metadata['title']}\nVIDEO DESCRIPTION: {metadata['description']}"
-                transcript_preview = f"⚠️ Note: Transcripts were blocked/disabled. Analyzing based on Metadata.\n\nDescription: {metadata['description'][:500]}"
+                metadata = self._fetch_metadata(video_id)
+                transcript = f"VIDEO TITLE: {metadata['title']}\nCHANNEL: {metadata['description']}"
+                transcript_preview = f"⚠️ Transcript nahi mila. Metadata se analyze kar raha hoon.\n\nTitle: {metadata['title']}"
                 transcript_len = 0
-                
-                # Stronger fallback prompt
-                transcript = source_content
             else:
                 transcript_len = len(transcript)
                 transcript_preview = transcript[:500] + "..." if len(transcript) > 500 else transcript
-                # Senior Fix: 7,000 chars is ~2k tokens, which is extremely safe for Gemini Free TPM limits.
-                max_chars = 7000 
-                transcript = transcript[:max_chars]
+                transcript = transcript[:7000]  # ~2k tokens, safe for free tier
 
-        # 2. Quota Protection: 4s delay to ensure RPM limits are respected
-        await asyncio.sleep(4)
+        # Small delay for quota safety
+        time.sleep(2)
 
         model = genai.GenerativeModel(self.model_name)
         prompt = self._build_prompt(task, transcript, question)
-        
-        # 3. Retry Loop for 429 Quota Protection (Senior Level Fix)
+
+        # Retry loop
         analysis_text = ""
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                response = await model.generate_content_async(prompt)
-                analysis_text = response.text
-                break # Success!
+                response = model.generate_content(prompt)  # SYNC - no await
+                analysis_text = self._safe_gemini_response(response)
+                if analysis_text and "⚠️ Response" not in analysis_text:
+                    break
             except Exception as e:
                 err_msg = str(e).lower()
                 if ("429" in err_msg or "exhausted" in err_msg or "quota" in err_msg) and attempt < max_retries - 1:
-                    # Wait 10-15 seconds and retry
-                    wait_time = 10 + (attempt * 5) 
-                    await asyncio.sleep(wait_time)
+                    wait_time = 15 + (attempt * 10)
+                    time.sleep(wait_time)
                     continue
-                elif "429" in err_msg or "exhausted" in err_msg or "quota" in err_msg:
-                    analysis_text = "🙏 Maaf kijiye, Quota Limit (429) hit ho gayi hai. Ye video bohot lambi hai (11+ hours!), is liye AI ko waqt lag raha hai. Please 1-2 minute baad dobara koshish karein ya Manual Mode use karein."
+                elif "429" in err_msg or "quota" in err_msg:
+                    analysis_text = "🙏 Quota limit aa gayi (429). Please 1-2 minute baad dobara koshish karein ya Manual Mode use karein."
                 else:
-                    analysis_text = f"⚠️ Oops! API error aagaya: {str(e)[:50]}..."
+                    analysis_text = f"⚠️ API Error: {str(e)[:100]}"
                 break
 
         result = {
@@ -184,15 +164,23 @@ class YouTubeModule:
             "analysis": analysis_text,
             "question": question if task == "qa" else None
         }
-        
-        # Save to cache if successful
-        if "Maaf kijiye" not in analysis_text:
+
+        if "Quota" not in analysis_text and "⚠️" not in analysis_text:
             self.cache[cache_key] = result
-            
+
         return result
 
+    def get_transcript_only(self, url: str) -> str:
+        """Sync version - Streamlit ke liye."""
+        video_id = self._extract_video_id(url)
+        return self._fetch_transcript(video_id)
+
     def _build_prompt(self, task: str, transcript: str, question: str = "") -> str:
-        base = f"You are a YouTube Analyst (NoteGPT Style). Analyze the transcript and provide a HIGH-QUALITY BILINGUAL DEEP DIVE (English & Roman Urdu).\n\nTranscript: {transcript[:25000]}\n\n"
+        base = (
+            "You are a YouTube Analyst (NoteGPT Style). "
+            "Analyze the transcript and provide a HIGH-QUALITY BILINGUAL DEEP DIVE (English & Roman Urdu).\n\n"
+            f"Transcript: {transcript[:25000]}\n\n"
+        )
 
         if task == "qa":
             return base + f"Answer this question in English and Roman Urdu: {question}"
