@@ -7,6 +7,7 @@ import requests
 import base64
 from PIL import Image
 import io
+import os
 from youtube_module import YouTubeModule
 
 st.set_page_config(page_title="Omni AI", page_icon="🤖", layout="wide", initial_sidebar_state="expanded")
@@ -119,7 +120,8 @@ if "chat_history" not in st.session_state:
 if "session_id" not in st.session_state:
     st.session_state.session_id = "user_session_1"
 if "yt_module" not in st.session_state:
-    api_key = st.secrets.get("GEMINI_API_KEY", "")
+    # Use os.getenv to avoid FileNotFoundError from st.secrets if no secrets.toml exists
+    api_key = os.getenv("GOOGLE_API_KEY", os.getenv("GEMINI_API_KEY", ""))
     st.session_state.yt_module = YouTubeModule(api_key=api_key)
 if "yt_url" not in st.session_state:
     st.session_state.yt_url = ""
