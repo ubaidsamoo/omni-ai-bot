@@ -4,10 +4,24 @@ import re
 import requests
 import time
 
+# ─────────────────────────────────────────────────────────────────────────────
+# FREE TIER QUOTA GUIDE (gemini models — least to most expensive):
+#   gemini-1.5-flash-8b  → 1500 RPD, 4M TPM  ← sabse safe, use as primary
+#   gemini-1.5-flash     → 1500 RPD, 1M TPM  ← fallback #1
+#   gemini-2.0-flash     → 1500 RPD, 1M TPM  ← fallback #2
+# Strategy: primary model try karo, 429 aane pe next model pe jump karo.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FALLBACK_MODELS = [
+    "gemini-1.5-flash-8b",   # Primary — fastest + most quota on free tier
+    "gemini-1.5-flash",      # Fallback 1
+    "gemini-2.0-flash",      # Fallback 2
+]
+
 
 class YouTubeModule:
 
-    def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: str, model_name: str = "gemini-1.5-flash-8b"):
         genai.configure(api_key=api_key)
         self.model_name = model_name
         self.cache = {}
@@ -24,7 +38,51 @@ class YouTubeModule:
                 return match.group(1)
         raise ValueError(f"❌ Invalid YouTube URL: {url}")
 
-    def _fetch_transcript(self, video_id: str) -> str:
+    # ── TRANSCRIPT: 3-layer fallback ─────────────
+
+    def _fetch_via_supadata(self, video_id: str) -> str:
+        """
+        Supadata public API — HuggingFace cloud IPs pe kaam karta hai.
+        Free tier: 100 requests/day — kaafi hai testing ke liye.
+        Docs: https://supadata.ai
+        """
+        try:
+            url = f"https://api.supadata.ai/v1/youtube/transcript?videoId={video_id}&text=true"
+            resp = requests.get(url, timeout=12)
+            if resp.status_code == 200:
+                data = resp.json()
+                # Response format: {"content": "...", "lang": "en"}
+                content = data.get("content", "")
+                if content and len(content) > 100:
+                    return content
+        except Exception:
+            pass
+        return ""
+
+    def _fetch_via_ytt_proxy(self, video_id: str) -> str:
+        """
+        ytt-api — open source proxy, HF pe bhi kaam karta hai.
+        Endpoint: https://www.youtube-transcript.io (free, no key needed)
+        """
+        try:
+            url = "https://www.youtube-transcript.io/api/transcript"
+            params = {"videoId": video_id, "lang": "en"}
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, params=params, headers=headers, timeout=12)
+            if resp.status_code == 200:
+                data = resp.json()
+                # Format: [{"text": "...", "start": 0.0}, ...]
+                if isinstance(data, list) and len(data) > 0:
+                    return " ".join(item.get("text", "") for item in data)
+        except Exception:
+            pass
+        return ""
+
+    def _fetch_via_library(self, video_id: str) -> str:
+        """
+        youtube-transcript-api direct library call.
+        Local pe kaam karta hai, HF pe aksar block hoti hai — isliye 3rd try.
+        """
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(
                 video_id, languages=['en', 'en-US', 'en-GB', 'hi', 'ur']
@@ -32,7 +90,10 @@ class YouTubeModule:
             return " ".join(entry['text'] for entry in transcript_list)
         except (NoTranscriptFound, TranscriptsDisabled):
             pass
+        except Exception:
+            pass
 
+        # Koi bhi available transcript lo
         try:
             transcripts_obj = YouTubeTranscriptApi.list_transcripts(video_id)
             try:
@@ -44,37 +105,67 @@ class YouTubeModule:
                     t = list(transcripts_obj)[0]
             fetched = t.fetch()
             return " ".join(entry['text'] for entry in fetched)
-        except (TranscriptsDisabled, NoTranscriptFound):
-            return "TRANSCRIPT_ERROR: YouTube transcripts disabled or blocked."
-        except Exception as e:
-            return f"TRANSCRIPT_ERROR: {str(e)}"
+        except Exception:
+            pass
+
+        return ""
+
+    def _fetch_transcript(self, video_id: str) -> str:
+        """
+        3-layer transcript fetching:
+        1. Supadata API  (HF-friendly, free)
+        2. youtube-transcript.io proxy (HF-friendly, free)
+        3. youtube-transcript-api library (local pe best, HF pe fallback)
+        """
+        # Layer 1: Supadata
+        result = self._fetch_via_supadata(video_id)
+        if result:
+            return result
+
+        # Layer 2: ytt proxy
+        result = self._fetch_via_ytt_proxy(video_id)
+        if result:
+            return result
+
+        # Layer 3: Direct library
+        result = self._fetch_via_library(video_id)
+        if result:
+            return result
+
+        return "TRANSCRIPT_ERROR: Kisi bhi method se transcript nahi mila."
+
+    # ── METADATA ─────────────────────────────────
 
     def _fetch_metadata(self, video_id: str) -> dict:
         metadata = {"title": f"Video {video_id}", "description": "", "thumbnail": ""}
 
-        oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        # oEmbed — sabse reliable
         try:
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
             resp = requests.get(oembed_url, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 metadata["title"] = data.get("title", metadata["title"])
                 metadata["description"] = data.get("author_name", "")
                 metadata["thumbnail"] = data.get("thumbnail_url", "")
+                return metadata  # oEmbed kaam kar gaya, aur kuch zaroorat nahi
         except Exception:
             pass
 
-        if metadata["title"] == f"Video {video_id}":
-            try:
-                noembed_url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
-                resp = requests.get(noembed_url, timeout=8)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    metadata["title"] = data.get("title", metadata["title"])
-                    metadata["thumbnail"] = data.get("thumbnail_url", metadata["thumbnail"])
-            except Exception:
-                pass
+        # noembed fallback
+        try:
+            noembed_url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
+            resp = requests.get(noembed_url, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                metadata["title"] = data.get("title", metadata["title"])
+                metadata["thumbnail"] = data.get("thumbnail_url", metadata["thumbnail"])
+        except Exception:
+            pass
 
         return metadata
+
+    # ── GEMINI: model fallback chain ─────────────
 
     def _safe_gemini_response(self, response) -> str:
         try:
@@ -88,34 +179,57 @@ class YouTubeModule:
                 return " ".join(p.text for p in parts if hasattr(p, 'text'))
         except Exception:
             pass
-        return "⚠️ Response generate nahi ho saka. Dobara koshish karein."
+        return ""
 
     def _call_gemini(self, prompt: str) -> str:
-        """Central Gemini caller with retry logic."""
-        model = genai.GenerativeModel(self.model_name)
-        time.sleep(2)
-        for attempt in range(3):
+        """
+        Smart Gemini caller:
+        - Primary: gemini-1.5-flash-8b (max free quota)
+        - 429 aane pe: next model pe jump karo
+        - Sab models fail karein to user-friendly message
+        """
+        models_to_try = FALLBACK_MODELS.copy()
+        # Agar user ne custom model set kiya hai toh pehle woh try karo
+        if self.model_name not in models_to_try:
+            models_to_try.insert(0, self.model_name)
+
+        last_error = ""
+
+        for model_name in models_to_try:
             try:
+                model = genai.GenerativeModel(model_name)
+                time.sleep(1)  # Minimal delay — zyada nahi
                 response = model.generate_content(prompt)
                 text = self._safe_gemini_response(response)
-                if text and "⚠️ Response" not in text:
+                if text:
                     return text
             except Exception as e:
                 err_msg = str(e).lower()
-                if ("429" in err_msg or "exhausted" in err_msg or "quota" in err_msg) and attempt < 2:
-                    time.sleep(15 + attempt * 10)
+                last_error = str(e)
+
+                if "429" in err_msg or "quota" in err_msg or "exhausted" in err_msg:
+                    # Is model ki quota khatam — next model try karo
+                    time.sleep(3)
                     continue
-                elif "429" in err_msg or "quota" in err_msg:
-                    return "🙏 Quota limit aa gayi (429). Please 1-2 minute baad dobara koshish karein."
                 else:
-                    return f"⚠️ API Error: {str(e)[:120]}"
-        return "⚠️ Response generate nahi ho saka. Dobara koshish karein."
+                    # Quota nahi, koi aur error hai — same model retry mat karo
+                    return f"⚠️ API Error: {str(e)[:150]}"
+
+        # Sab models fail
+        return (
+            "⚠️ Abhi sabhi Gemini models ki free quota use ho chuki hai.\n\n"
+            "**Kya karein:**\n"
+            "- 1-2 minute wait karke dobara try karein\n"
+            "- Ya kal aayein — daily limit reset ho jaati hai\n"
+            "- Ya Manual Mode mein transcript paste karein\n\n"
+            f"_(Last error: {last_error[:100]})_"
+        )
+
+    # ─────────────────────────────────────────────
+    # BASE DATA (shared by all tabs)
+    # ─────────────────────────────────────────────
 
     def _get_base_data(self, url: str, manual_content: str = "") -> dict:
-        """
-        Transcript + metadata ek baar fetch karo — sab tabs share karte hain.
-        Cache mein save hota hai taake baar baar request na jaye.
-        """
         video_id = self._extract_video_id(url)
         cache_key = f"raw_{video_id}_{len(manual_content)}"
         if cache_key in self.cache:
@@ -125,15 +239,26 @@ class YouTubeModule:
 
         if manual_content:
             transcript = manual_content
-            transcript_note = f"📜 Manual Mode — {len(manual_content)} chars."
+            transcript_note = f"📜 Manual Mode — {len(manual_content)} chars"
         else:
             transcript = self._fetch_transcript(video_id)
+
             if "TRANSCRIPT_ERROR" in transcript:
-                transcript = f"VIDEO TITLE: {metadata['title']}\nCHANNEL: {metadata['description']}"
-                transcript_note = "⚠️ Transcript nahi mila. Metadata se analyze kar raha hoon."
+                # Sirf metadata hai — iske saath bhi analysis ho sakti hai
+                transcript = (
+                    f"VIDEO TITLE: {metadata['title']}\n"
+                    f"CHANNEL: {metadata['description']}\n"
+                    f"NOTE: Full transcript unavailable. Analyze based on title and channel context."
+                )
+                transcript_note = (
+                    "⚠️ Transcript fetch nahi ho saka (YouTube ne block kiya).\n"
+                    "Tip: Video description copy karke Manual Mode mein paste karo — "
+                    "behtar analysis milegi!"
+                )
             else:
-                transcript_note = f"✅ Transcript mila — {len(transcript)} characters"
-                transcript = transcript[:7000]
+                char_count = len(transcript)
+                transcript = transcript[:8000]
+                transcript_note = f"✅ Transcript mila — {char_count:,} characters fetched"
 
         result = {
             "video_id": video_id,
@@ -159,17 +284,17 @@ class YouTubeModule:
 
 Video Title: {base['metadata']['title']}
 Channel: {base['metadata']['description']}
-Transcript: {base['transcript']}
+Transcript/Content: {base['transcript']}
 
-Format your response EXACTLY like this:
+Format EXACTLY like this:
 
 ## 📝 Summary (English)
-Write a detailed 3-5 paragraph summary. Cover the main topic, key discussions, and overall message clearly.
+Write a detailed 3-5 paragraph summary. Cover the main topic, key discussions, and overall message.
 
 ---
 
 ## 📝 خلاصہ (Roman Urdu)
-Wahi summary Roman Urdu mein likho. Natural chatting style — jaise kisi dost ko bata rahe ho. Mushkil alfaaz avoid karo.
+Wahi summary Roman Urdu mein — natural chatting style, jaise dost ko bata rahe ho. Mushkil alfaaz mat use karo.
 
 ---
 
@@ -192,19 +317,18 @@ Wahi summary Roman Urdu mein likho. Natural chatting style — jaise kisi dost k
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        prompt = f"""You are a YouTube Analyst. Extract the most important KEY POINTS from this video.
+        prompt = f"""You are a YouTube Analyst. Extract KEY POINTS from this video.
 
 Video Title: {base['metadata']['title']}
-Transcript: {base['transcript']}
+Transcript/Content: {base['transcript']}
 
 Format EXACTLY like this:
 
 ## 🎯 Key Points (English)
 Extract 5-8 key points. Be specific and informative.
 
-1. **[Short Title]** — 1-2 sentence explanation of this point.
+1. **[Short Title]** — 1-2 sentence explanation.
 2. **[Short Title]** — Explanation...
-(and so on)
 
 ---
 
@@ -213,12 +337,11 @@ Same points Roman Urdu mein — simple aur clear.
 
 1. **[Short Title]** — Roman Urdu explanation.
 2. **[Short Title]** — Explanation...
-(and so on)
 
 ---
 
-## ⭐ Sabse Zaroori Baat (One-liner)
-Is poore video ka ek sabse important takeaway kya hai? Sirf ek line mein likho.
+## ⭐ Sabse Zaroori Baat
+Is video ka ek sabse important takeaway — sirf ek line mein.
 """
         analysis = self._call_gemini(prompt)
         result = {**base, "analysis": analysis, "tab": "keypoints"}
@@ -230,33 +353,29 @@ Is poore video ka ek sabse important takeaway kya hai? Sirf ek line mein likho.
     # ─────────────────────────────────────────────
 
     def get_answer(self, url: str, question: str, manual_content: str = "") -> dict:
-        """
-        Q&A tab — user koi bhi sawaal pooch sakta hai.
-        Multi-turn: chat_history list pass karo conversation yaad rakhne ke liye.
-        """
         base = self._get_base_data(url, manual_content)
 
-        prompt = f"""You are a helpful YouTube Analyst Chatbot. Answer the user's question based on the video.
+        prompt = f"""You are a helpful YouTube Analyst Chatbot.
 
 Video Title: {base['metadata']['title']}
-Transcript: {base['transcript']}
+Transcript/Content: {base['transcript']}
 
 User's Question: {question}
 
 Format EXACTLY like this:
 
 ## 💬 Answer (English)
-Give a thorough, accurate answer based only on the transcript. If the answer isn't in the video, say so honestly — don't make things up.
+Thorough, accurate answer based on the transcript. If not in video, say so honestly.
 
 ---
 
 ## 💬 جواب (Roman Urdu)
-Wahi jawab Roman Urdu mein — jaise ek dost explain kar raha ho. Natural aur friendly tone.
+Wahi jawab Roman Urdu mein — friendly aur natural tone.
 
 ---
 
 ## 📍 Context
-Briefly mention which part of the video covers this topic (if identifiable).
+Which part of the video covers this (if identifiable).
 """
         analysis = self._call_gemini(prompt)
         return {**base, "analysis": analysis, "question": question, "tab": "qa"}
@@ -271,38 +390,36 @@ Briefly mention which part of the video covers this topic (if identifiable).
         if cache_key in self.cache:
             return self.cache[cache_key]
 
-        prompt = f"""You are a YouTube Analyst. Based on this video, suggest related topics and a learning path.
+        prompt = f"""You are a YouTube Analyst. Suggest related topics and learning path.
 
 Video Title: {base['metadata']['title']}
-Transcript: {base['transcript']}
+Transcript/Content: {base['transcript']}
 
 Format EXACTLY like this:
 
 ## 🔗 Related Topics (English)
-List 5-6 topics closely related to this video's content.
+5-6 closely related topics.
 
-1. **[Topic Name]** — Why it's related and what you'd learn.
-2. **[Topic Name]** — Explanation...
-(and so on)
+1. **[Topic]** — Why related and what you'd learn.
+2. **[Topic]** — Explanation...
 
 ---
 
 ## 🔗 متعلقہ موضوعات (Roman Urdu)
-Same topics Roman Urdu mein explain karo.
+Same topics Roman Urdu mein.
 
-1. **[Topic Name]** — Roman Urdu explanation.
-2. **[Topic Name]** — Explanation...
-(and so on)
-
----
-
-## 📚 Learning Path (Agle Qadam)
-Is video ke baad kya sikhna chahiye? Beginner se advanced tak 4-5 steps batao — English mein.
+1. **[Topic]** — Explanation.
+2. **[Topic]** — Explanation...
 
 ---
 
-## 🔍 Search Karne ke liye Keywords
-Agar user is topic par aur padhna chahta hai toh kya Google/YouTube pe search kare? 6-8 keywords.
+## 📚 Learning Path
+Beginner se advanced tak 4-5 steps — English mein.
+
+---
+
+## 🔍 Search Keywords
+6-8 keywords jo user Google/YouTube pe search kare.
 """
         analysis = self._call_gemini(prompt)
         result = {**base, "analysis": analysis, "tab": "related"}
@@ -314,7 +431,6 @@ Agar user is topic par aur padhna chahta hai toh kya Google/YouTube pe search ka
     # ─────────────────────────────────────────────
 
     def analyze(self, url: str, task: str = "summarize", question: str = "", manual_content: str = "") -> dict:
-        """Old interface — routes to new tab methods. Purana code bhi kaam karta rahega."""
         if task == "qa" and question:
             return self.get_answer(url, question, manual_content)
         elif task == "keypoints":
