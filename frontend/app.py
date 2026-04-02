@@ -7,6 +7,7 @@ import requests
 import base64
 from PIL import Image
 import io
+from youtube_module import YouTubeModule
 
 st.set_page_config(page_title="Omni AI", page_icon="🤖", layout="wide", initial_sidebar_state="expanded")
 
@@ -14,48 +15,61 @@ st.markdown("""
 <style>
     .stApp { background: #0f1116; color: #ffffff; font-family: 'Inter', sans-serif; }
     [data-testid="stSidebar"] { background: #161922; border-right: 1px solid #2d333b; }
-    
+
     /* Premium Header */
-    .main-header { 
-        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); 
+    .main-header {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         padding: 20px; border-radius: 15px; margin-bottom: 20px; text-align: center;
         box-shadow: 0 10px 30px rgba(79,70,229,0.3); border: 1px solid rgba(255,255,255,0.1);
     }
     .main-header h1 { color: white; font-size: 2.2rem; font-weight: 800; margin: 0; }
-    .chat-user { 
-        background: #2563eb; color: white; padding: 12px 18px; 
-        border-radius: 20px 20px 2px 20px; margin: 10px 0; 
+
+    /* Chat bubbles */
+    .chat-user {
+        background: #2563eb; color: white; padding: 12px 18px;
+        border-radius: 20px 20px 2px 20px; margin: 10px 0;
         max-width: 85%; margin-left: auto; box-shadow: 0 4px 10px rgba(37,99,235,0.2);
     }
-    .chat-ai { 
-        background: #1e293b; border: 1px solid #334155; color: #f1f5f9; 
-        padding: 12px 18px; border-radius: 20px 20px 20px 2px; margin: 10px 0; 
+    .chat-ai {
+        background: #1e293b; border: 1px solid #334155; color: #f1f5f9;
+        padding: 12px 18px; border-radius: 20px 20px 20px 2px; margin: 10px 0;
         max-width: 85%; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }
-    .stChatInput { position: fixed; bottom: 20px; }
+
+    /* YouTube Q&A chat bubbles */
+    .yt-user {
+        background: #1a3a5c; color: #e0e0e0;
+        border-radius: 18px 18px 4px 18px;
+        padding: 12px 16px; margin: 8px 0 8px 60px;
+    }
+    .yt-bot {
+        background: #1e1e2e; border: 1px solid #333;
+        color: #e0e0e0; border-radius: 18px 18px 18px 4px;
+        padding: 12px 16px; margin: 8px 60px 8px 0;
+    }
 
     /* Glassmorphism Cards */
     .dashboard-card {
-        background: rgba(255,255,255,0.03); 
+        background: rgba(255,255,255,0.03);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 16px; padding: 24px; 
+        border-radius: 16px; padding: 24px;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: 0 4px 20px rgba(0,0,0,0.2);
         display: flex; flex-direction: column; align-items: center; justify-content: center;
         min-height: 140px;
     }
-    .dashboard-card:hover { 
-        transform: translateY(-8px); 
+    .dashboard-card:hover {
+        transform: translateY(-8px);
         background: rgba(255,255,255,0.06);
         border-color: #4f46e5;
         box-shadow: 0 12px 30px rgba(79,70,229,0.25);
     }
-    
+
     .kpi-title { color: #94a3b8; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
     .kpi-value { font-size: 2.5rem; font-weight: 800; color: #ffffff; margin: 0; }
     .kpi-trend { font-size: 0.8rem; font-weight: 500; margin-top: 8px; padding: 2px 8px; border-radius: 20px; background: rgba(76,175,80,0.1); color: #4ade80; }
-    
+
     /* Smart Insight Box */
     .insight-box {
         background: rgba(255,255,255,0.02);
@@ -66,8 +80,28 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(0,0,0,0.15);
     }
 
-    .stButton > button { 
-        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); 
+    /* Transcript note */
+    .transcript-note {
+        background: #1e2a1e;
+        border-left: 3px solid #4caf50;
+        padding: 10px 14px; border-radius: 6px;
+        font-size: 0.85em; color: #90ee90; margin-bottom: 12px;
+    }
+
+    /* YouTube tabs styling */
+    .stTabs [data-baseweb="tab"] {
+        background: #1e1e2e;
+        border-radius: 10px 10px 0 0;
+        padding: 10px 20px;
+        color: #aaa; font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #4f46e5 !important;
+        color: white !important;
+    }
+
+    .stButton > button {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         border: none; color: white; font-weight: 700; border-radius: 12px;
         padding: 12px 28px; transition: all 0.2s;
     }
@@ -75,24 +109,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# FIX: 127.0.0.1 instead of localhost
 BACKEND_URL = "http://127.0.0.1:8000"
 
+# ─────────────────────────────────────────────
+# SESSION STATE
+# ─────────────────────────────────────────────
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "session_id" not in st.session_state:
     st.session_state.session_id = "user_session_1"
-if "uploaded_doc_id" not in st.session_state:
-    st.session_state.uploaded_doc_id = None
-if "uploaded_doc_name" not in st.session_state:
-    st.session_state.uploaded_doc_name = None
+if "yt_module" not in st.session_state:
+    api_key = st.secrets.get("GEMINI_API_KEY", "")
+    st.session_state.yt_module = YouTubeModule(api_key=api_key)
+if "yt_url" not in st.session_state:
+    st.session_state.yt_url = ""
+if "yt_results" not in st.session_state:
+    st.session_state.yt_results = {}   # tab -> result
+if "yt_qa_history" not in st.session_state:
+    st.session_state.yt_qa_history = []
 
+# ─────────────────────────────────────────────
+# SIDEBAR
+# ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
     <div style='text-align:center; padding: 20px 0;'>
         <div style='font-size: 3rem;'>🤖</div>
         <h2 style='color: #667eea; margin: 8px 0;'>Omni AI</h2>
-        <p style='color: #888; font-size: 0.85rem;'>Powered by Gemini 1.5 Flash</p>
+        <p style='color: #888; font-size: 0.85rem;'>Powered by Gemini 2.0 Flash</p>
     </div>
     """, unsafe_allow_html=True)
     st.divider()
@@ -111,7 +155,7 @@ with st.sidebar:
     st.divider()
     st.markdown("<p style='color:#666; font-size:0.75rem; text-align:center;'>Omni AI v2.0 | Built with ❤️</p>", unsafe_allow_html=True)
 
-# Header - Show on all pages EXCEPT Chat page for that "Gemini/ChatGPT" look
+# Header (Chat page pe nahi)
 if selected_page != "💬 AI Chat":
     st.markdown("""
     <div class='main-header'>
@@ -125,12 +169,12 @@ if selected_page != "💬 AI Chat":
 # PAGE 1: AI CHAT
 # ══════════════════════════════════════════════════════════════════════════════
 if selected_page == "💬 AI Chat":
-    # No extra titles here for that clean look
     chat_container = st.container(height=600, border=False)
     with chat_container:
         if not st.session_state.chat_history:
             st.markdown("""
-            <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center; margin-top: 100px;'>
+            <div style='display: flex; flex-direction: column; align-items: center; justify-content: center;
+                        height: 100%; text-align: center; margin-top: 100px;'>
                 <h1 style='font-size: 3.5rem; margin-bottom: 0;'>🤖 How can I help?</h1>
                 <p style='color: #888; font-size: 1.2rem;'>Ask Omni AI anything in Roman Urdu or English.</p>
             </div>
@@ -143,12 +187,8 @@ if selected_page == "💬 AI Chat":
                     st.markdown(f"<div class='chat-ai'>🤖 <strong>Omni AI:</strong><br>{msg['content']}</div>", unsafe_allow_html=True)
 
     st.divider()
-
-    # FIX: st.chat_input - Enter se send, no send_btn
-    # Fixed Input Box
     user_input = st.chat_input("What is your goal today? (Enter to send)")
-    
-    # Optional Clear button in a separate small row
+
     if st.button("Clear Chat 🗑️"):
         st.session_state.chat_history = []
         try:
@@ -157,7 +197,6 @@ if selected_page == "💬 AI Chat":
             pass
         st.rerun()
 
-    # FIX: sirf user_input check karo, send_btn nahi
     if user_input:
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.spinner("🤔 Thinking..."):
@@ -179,100 +218,175 @@ if selected_page == "💬 AI Chat":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE 2: YOUTUBE DEEP DIVE
+# PAGE 2: YOUTUBE DEEP DIVE — TAB-BASED
 # ══════════════════════════════════════════════════════════════════════════════
 elif selected_page == "🎥 YouTube Deep Dive":
-    st.markdown("## 🎥 YouTube Summarizer")
+    st.markdown("## 🎥 YouTube Deep Dive")
+    st.markdown("##### Paste karo URL — Summary, Key Points, Q&A, Related Topics sab ek jagah!")
 
-    yt_url = st.text_input("🔗 YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
-    
-    st.info("NoteGPT Mode: Deep Dive in English & Roman Urdu")
-    user_question = st.text_input("❓ Optional: Ask a specific question about the video", placeholder="E.g., What did he say about X?")
-    
-    manual_mode = st.checkbox("🛠️ Manual Mode (Use this if Auto-Fetch fails)", value=False)
-    manual_content = ""
-    if manual_mode:
-        st.warning("⚠️ Is box mein YouTube URL nahi balkay Video ki **Description** ya **Transcript** paste karein.")
-        manual_content = st.text_area("📋 Paste Detailed Text / Description / Transcript", height=150, placeholder="Paste data here (Copy from Video Description or Captions)...")
+    # ── URL Input ──────────────────────────────
+    col_url, col_btn = st.columns([5, 1])
+    with col_url:
+        yt_url_input = st.text_input(
+            "YouTube URL",
+            placeholder="https://www.youtube.com/watch?v=...",
+            label_visibility="collapsed"
+        )
+    with col_btn:
+        yt_analyze_btn = st.button("🚀 Analyze", use_container_width=True)
 
-    analyze_btn = st.button("🚀 Run NoteGPT Deep Dive", use_container_width=True)
+    with st.expander("📋 Manual Mode — Transcript/Description khud paste karo (agar auto-fetch fail ho)"):
+        manual_content = st.text_area(
+            "Content yahan paste karo:",
+            height=120,
+            placeholder="Video description ya transcript yahan paste karo..."
+        )
 
-    if analyze_btn and yt_url:
-        data = None
-        with st.status("🔍 Deep Dive in progress...") as status:
+    # URL change hone pe sab reset karo
+    if yt_url_input and yt_url_input != st.session_state.yt_url:
+        st.session_state.yt_url = yt_url_input
+        st.session_state.yt_results = {}
+        st.session_state.yt_qa_history = []
+
+    yt = st.session_state.yt_module
+
+    # Analyze button dabane pe sab tabs ke liye fetch karo
+    if yt_analyze_btn and yt_url_input:
+        with st.spinner("🔍 Video analyze ho rahi hai — thoda sabr karo..."):
             try:
-                st.write("📤 Sending request to AI...")
-                response = requests.post(
-                    f"{BACKEND_URL}/youtube/analyze",
-                    data={
-                        "url": yt_url, 
-                        "task": "summarize", 
-                        "question": user_question,
-                        "manual_content": manual_content
-                    },
-                    timeout=120
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    status.update(label="✅ Deep Dive Complete!", state="complete")
-                else:
-                    st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
-                    status.update(label="❌ Failed", state="error")
-            except requests.Timeout:
-                st.error("⏱️ Timeout! Video bahut lamba ho sakta hai.")
-                status.update(label="⏱️ Timeout", state="error")
+                # Summary fetch (transcript bhi cache ho jaata hai iske andar)
+                st.session_state.yt_results["summary"] = yt.get_summary(yt_url_input, manual_content or "")
             except Exception as e:
-                st.error(f"❌ Connection Error: {e}")
-                status.update(label="❌ connection Error", state="error")
+                st.error(f"❌ Error: {str(e)}")
 
-        if data:
-            # NoteGPT Layout - Single Page Scrolling Report
-            st.markdown("---")
-            
-            # 📊 Comprehensive Report Section
-            st.markdown("### 📊 Comprehensive Report")
-            analysis_text = data.get("analysis", "")
-            
-            # If analysis has sections, split them or show as is
-            report_part = analysis_text
-            if "## 🎯" in analysis_text:
-                report_part = analysis_text.split("## 🎯")[0]
-            
-            st.markdown(report_part)
-            
-            st.markdown("---")
-            
-            # 🎯 Key Takeaways Section
-            st.markdown("### 🎯 Key Takeaways")
-            if "## 🎯" in analysis_text:
-                takeaways = analysis_text.split("## 🎯")[1]
-                st.markdown(takeaways)
-            else:
-                st.info("Key takeaways are included in the report above.")
-                
-            st.markdown("---")
-            
-            # 📜 Full Transcript Section
-            st.markdown("### 📜 Full Transcript")
-            with st.expander("👀 View Full Transcript Preview"):
-                st.text_area("Transcript Extract", value=data.get("transcript_preview", ""), height=300, disabled=True)
-                if "TRANSCRIPT_ERROR" in data.get("transcript_preview", ""):
-                    st.warning("⚠️ YouTube Transcripts were blocked/disabled. Analysis is based on metadata.")
-            
-            st.markdown("---")
-            
-            # 🔗 Video Link
-            st.markdown(f"🔗 **Video Link:** [{data.get('video_url', yt_url)}]({data.get('video_url', yt_url)})")
-    elif analyze_btn and not yt_url:
+        if "summary" in st.session_state.yt_results:
+            with st.spinner("🎯 Key Points nikaale ja rahe hain..."):
+                try:
+                    st.session_state.yt_results["keypoints"] = yt.get_keypoints(yt_url_input, manual_content or "")
+                except Exception as e:
+                    st.warning(f"Key Points mein masla: {e}")
+
+            with st.spinner("🔗 Related Topics dhoondhe ja rahe hain..."):
+                try:
+                    st.session_state.yt_results["related"] = yt.get_related_topics(yt_url_input, manual_content or "")
+                except Exception as e:
+                    st.warning(f"Related Topics mein masla: {e}")
+
+    elif yt_analyze_btn and not yt_url_input:
         st.warning("⚠️ Pehle YouTube URL enter karo!")
 
-    with st.expander("💡 Tips & Tricks (Kaise use karein)"):
+    # ── TABS ──────────────────────────────────
+    tab_summary, tab_keys, tab_qa, tab_related = st.tabs([
+        "📝 Summary",
+        "🎯 Key Points",
+        "💬 Q&A Chat",
+        "🔗 Related Topics"
+    ])
+
+    # ── TAB 1: SUMMARY ────────────────────────
+    with tab_summary:
+        if "summary" in st.session_state.yt_results:
+            r = st.session_state.yt_results["summary"]
+
+            # Video info card
+            col_thumb, col_info = st.columns([1, 3])
+            with col_thumb:
+                thumb = r.get("metadata", {}).get("thumbnail", "")
+                if thumb:
+                    st.image(thumb, use_container_width=True)
+            with col_info:
+                title = r.get("metadata", {}).get("title", "")
+                channel = r.get("metadata", {}).get("description", "")
+                video_url = r.get("video_url", "")
+                if title:
+                    st.markdown(f"### {title}")
+                if channel:
+                    st.markdown(f"**Channel:** {channel}")
+                if video_url:
+                    st.markdown(f"[▶️ YouTube pe dekho]({video_url})")
+
+            note = r.get("transcript_note", "")
+            if note:
+                st.markdown(f'<div class="transcript-note">{note}</div>', unsafe_allow_html=True)
+
+            st.markdown(r.get("analysis", ""))
+        else:
+            st.info("👆 Upar URL paste karo aur **Analyze** button dabao!")
+
+    # ── TAB 2: KEY POINTS ─────────────────────
+    with tab_keys:
+        if "keypoints" in st.session_state.yt_results:
+            r = st.session_state.yt_results["keypoints"]
+            note = r.get("transcript_note", "")
+            if note:
+                st.markdown(f'<div class="transcript-note">{note}</div>', unsafe_allow_html=True)
+            st.markdown(r.get("analysis", ""))
+        else:
+            st.info("👆 Pehle URL analyze karo!")
+
+    # ── TAB 3: Q&A CHAT ───────────────────────
+    with tab_qa:
+        if not yt_url_input:
+            st.info("👆 Pehle URL paste karo aur Analyze dabao — phir yahan koi bhi sawaal poochho!")
+        else:
+            st.markdown("##### 💬 Is video ke baare mein kuch bhi poochho!")
+            st.markdown("*Maslan: 'Is video ka main message kya hai?' ya 'Speaker ne X ke baare mein kya kaha?'*")
+            st.divider()
+
+            # Chat history dikhao
+            for msg in st.session_state.yt_qa_history:
+                if msg["role"] == "user":
+                    st.markdown(f'<div class="yt-user">🧑 {msg["text"]}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="yt-bot">🤖 {msg["text"]}</div>', unsafe_allow_html=True)
+
+            # Input row
+            q_col, btn_col = st.columns([5, 1])
+            with q_col:
+                user_q = st.text_input(
+                    "Sawaal",
+                    placeholder="Apna sawaal yahan likho...",
+                    label_visibility="collapsed",
+                    key="yt_qa_input"
+                )
+            with btn_col:
+                ask_btn = st.button("📨 Poochho", use_container_width=True, key="yt_ask")
+
+            if ask_btn and user_q:
+                st.session_state.yt_qa_history.append({"role": "user", "text": user_q})
+                with st.spinner("🤔 Soch raha hoon..."):
+                    try:
+                        result = yt.get_answer(yt_url_input, user_q, manual_content or "")
+                        answer = result.get("analysis", "⚠️ Jawab nahi mila.")
+                        st.session_state.yt_qa_history.append({"role": "bot", "text": answer})
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+
+            if st.session_state.yt_qa_history:
+                if st.button("🗑️ Chat saaf karo", key="yt_clear_chat"):
+                    st.session_state.yt_qa_history = []
+                    st.rerun()
+
+    # ── TAB 4: RELATED TOPICS ─────────────────
+    with tab_related:
+        if "related" in st.session_state.yt_results:
+            r = st.session_state.yt_results["related"]
+            note = r.get("transcript_note", "")
+            if note:
+                st.markdown(f'<div class="transcript-note">{note}</div>', unsafe_allow_html=True)
+            st.markdown(r.get("analysis", ""))
+        else:
+            st.info("👆 Pehle URL analyze karo!")
+
+    # Tips
+    with st.expander("💡 Tips & Tricks"):
         st.markdown("""
-        - **English Captions**: English captions wali videos ka result sab se behtar aata hai.
-        - **Auto-Generated**: YouTube ke auto-generated captions bhi work karte hain.
-        - **Lambi Videos**: Agar video lamba hai to "Key Takeaways" aapko jaldi summary de dega.
-        - **Private Videos**: Private ya Restricted videos support nahi hain.
-        - **Specific Saval**: Aap kisi khaas topic pe sawal bhi pooch sakte hain.
+        - **English Captions** wali videos ka result sab se behtar aata hai.
+        - **Auto-Generated** YouTube captions bhi kaam karte hain.
+        - **Manual Mode** use karo agar transcript auto-fetch na ho — description paste karo.
+        - **Q&A Tab** mein jitne chaaho sawaal poochho — video ke baare mein sab kuch!
+        - **Private/Restricted** videos support nahi hain.
         """)
 
 
@@ -280,7 +394,6 @@ elif selected_page == "🎥 YouTube Deep Dive":
 # PAGE 3: DATA ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════════
 elif selected_page == "📊 Data Analysis":
-    # --- Example Datasets Feature ---
     st.markdown("### 💡 Try an Example Dataset")
     examples = {
         "None (Upload your own)": None,
@@ -289,13 +402,12 @@ elif selected_page == "📊 Data Analysis":
         "🏥 Insurance Costs (Bigger)": "data/insurance.csv"
     }
     selected_example = st.selectbox("Select a dataset to quickly test AI accuracy:", list(examples.keys()))
-    
+
     csv_file = st.file_uploader("📎 OR CSV File Upload karo", type=["csv"])
-    
-    # Logic to use example if chosen
+
     final_csv_data = None
     final_csv_name = None
-    
+
     if csv_file:
         final_csv_data = csv_file.read()
         final_csv_name = csv_file.name
@@ -329,11 +441,9 @@ elif selected_page == "📊 Data Analysis":
                     if response.status_code == 200:
                         data = response.json()
                         shape = data.get("shape", {})
-                        
-                        # --- POWER BI DASHBOARD LAYOUT ---
+
                         st.markdown("### 📈 Data Analytics Dashboard")
-                        
-                        # KPI Metrics Row
+
                         m1, m2, m3, m4 = st.columns(4)
                         with m1:
                             st.markdown(f"<div class='dashboard-card'><div class='kpi-title'>Total Rows</div><div class='kpi-value'>{shape.get('rows', 0):,}</div><div class='kpi-trend'>Stable</div></div>", unsafe_allow_html=True)
@@ -344,20 +454,17 @@ elif selected_page == "📊 Data Analysis":
                             st.markdown(f"<div class='dashboard-card'><div class='kpi-title'>Missing</div><div class='kpi-value'>{null_total}</div><div class='kpi-trend' style='color:#ff4b4b;'>{round((null_total/max(1, shape.get('rows',1)))*100, 1)}%</div></div>", unsafe_allow_html=True)
                         with m4:
                             st.markdown("<div class='dashboard-card'><div class='kpi-title'>System</div><div class='kpi-value'>AI</div><div class='kpi-trend' style='color:#667eea;'>Optimized</div></div>", unsafe_allow_html=True)
-                        
+
                         st.write("")
                         st.divider()
 
-                        # Grid Layout: Charts and Insights
                         col_chart, col_insights = st.columns([1.2, 1])
-                        
                         with col_chart:
                             if data.get("chart_base64"):
                                 st.markdown("#### 📊 Analysis Snapshot")
                                 chart_bytes = base64.b64decode(data["chart_base64"])
                                 chart_image = Image.open(io.BytesIO(chart_bytes))
-                                st.image(chart_image, use_column_width=True)
-                        
+                                st.image(chart_image, use_container_width=True)
                         with col_insights:
                             st.markdown("#### 🚀 Smart Strategy Insights")
                             st.markdown(f"<div class='insight-box'>{data.get('ai_insights', 'No insights available').replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
@@ -377,7 +484,7 @@ elif selected_page == "📊 Data Analysis":
 st.divider()
 st.markdown("""
 <div style='text-align:center; color:#555; font-size:0.8rem; padding:10px 0;'>
-    🤖 <strong>Omni AI</strong> — Powered by Google Gemini 1.5 Flash |
+    🤖 <strong>Omni AI</strong> — Powered by Google Gemini 2.0 Flash |
     Built with FastAPI + Streamlit + LangChain
 </div>
 """, unsafe_allow_html=True)
