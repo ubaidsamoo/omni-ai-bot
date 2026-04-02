@@ -279,12 +279,36 @@ elif selected_page == "🎥 YouTube Deep Dive":
 # PAGE 3: DATA ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════════
 elif selected_page == "📊 Data Analysis":
-    st.markdown("## 📊 AI-Powered Data Analysis")
-    st.markdown("CSV file upload karo - AI statistical insights aur automated charts banayega!")
-
-    csv_file = st.file_uploader("📎 CSV File Upload karo", type=["csv"])
-
+    # --- Example Datasets Feature ---
+    st.markdown("### 💡 Try an Example Dataset")
+    examples = {
+        "None (Upload your own)": None,
+        "🥗 Tips Analysis (Small)": "data/tips.csv",
+        "🎓 Student Performance (Small)": "data/student.csv",
+        "🏥 Insurance Costs (Bigger)": "data/insurance.csv"
+    }
+    selected_example = st.selectbox("Select a dataset to quickly test AI accuracy:", list(examples.keys()))
+    
+    csv_file = st.file_uploader("📎 OR CSV File Upload karo", type=["csv"])
+    
+    # Logic to use example if chosen
+    final_csv_data = None
+    final_csv_name = None
+    
     if csv_file:
+        final_csv_data = csv_file.read()
+        final_csv_name = csv_file.name
+    elif selected_example != "None (Upload your own)":
+        example_path = examples[selected_example]
+        try:
+            with open(example_path, "rb") as f:
+                final_csv_data = f.read()
+                final_csv_name = example_path.split("/")[-1]
+            st.success(f"✅ Example Loaded: {selected_example}")
+        except Exception as e:
+            st.error(f"❌ Could not load example: {e}")
+
+    if final_csv_data:
         analysis_question = st.text_area(
             "🤔 Analysis Question (Optional)",
             value="Give me a complete statistical summary and the most important insights from this dataset.",
@@ -297,7 +321,7 @@ elif selected_page == "📊 Data Analysis":
                 try:
                     response = requests.post(
                         f"{BACKEND_URL}/data/analyze",
-                        files={"csv_file": (csv_file.name, csv_file.read(), "text/csv")},
+                        files={"csv_file": (final_csv_name, final_csv_data, "text/csv")},
                         data={"question": analysis_question},
                         timeout=120
                     )
