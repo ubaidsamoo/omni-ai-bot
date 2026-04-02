@@ -1,11 +1,4 @@
----
-title: Omni AI Bot
-emoji: 🤖
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-pinned: false
----
+![Omni AI Dashboard](screenshot.png)
 
 # 🤖 Omni AI Bot - Multi-Functional Generative AI Workspace
 
