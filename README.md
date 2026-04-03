@@ -1,10 +1,5 @@
 ---
-title: Omni Ai Bot
-emoji: 🤖
-colorFrom: blue
-colorTo: pink
-sdk: docker
-pinned: false
+Omni-Ai-Bot 
 ---
 
 ![Omni AI Dashboard](omni_ai.PNG)
