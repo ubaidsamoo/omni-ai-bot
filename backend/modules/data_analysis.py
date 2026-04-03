@@ -185,6 +185,8 @@ Provide 4 sections using emojis: Overview, Key Findings, Answer, and Strategy.""
         if not ai_insights:
             if "429" in last_err.lower() or "quota" in last_err.lower():
                 ai_insights = "🙏 Gemini limit exhausted! Nayi key try karein ya kuch dair ruk kar check karein."
+            elif any(x in last_err.lower() for x in ("404", "not found", "not supported", "v1beta")):
+                ai_insights = "⚠️ Koi bhi Gemini model available nahi mila. Check your API Key."
             else:
                 ai_insights = f"⚠️ Analysis error: {last_err[:100]}"
 

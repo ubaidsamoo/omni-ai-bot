@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from modules.chat import ChatModule
-from modules.youtube import YouTubeModule
+from modules.document import DocumentModule
 from modules.data_analysis import DataAnalysisModule
 
 app = FastAPI(
@@ -44,7 +44,7 @@ gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
 print(f"✅ Using model: {gemini_model}")
 
 chat_module     = ChatModule(api_key, gemini_model)
-youtube_module  = YouTubeModule(api_key, gemini_model)
+document_module = DocumentModule(api_key, gemini_model)
 data_module     = DataAnalysisModule(api_key, gemini_model)
 
 
@@ -69,20 +69,24 @@ async def clear_chat(session_id: str = Form(default="default")):
     chat_module.clear_history(session_id)
     return {"status": "✅ Chat history cleared"}
 
-@app.post("/youtube/analyze")
-def analyze_youtube(url: str = Form(...), task: str = Form(default="summarize"), question: str = Form(default=""), manual_content: str = Form(default="")):
+@app.post("/document/analyze")
+async def analyze_document(
+    pdf_file: UploadFile = File(...), 
+    task: str = Form(default="summarize"), 
+    question: str = Form(default="")
+):
     try:
-        result = youtube_module.analyze(url, task, question, manual_content)
+        pdf_bytes = await pdf_file.read()
+        file_id = pdf_file.filename
+        
+        if task == "summarize":
+            result = document_module.get_summary(pdf_bytes, file_id)
+        elif task == "qa" and question:
+            result = document_module.get_answer(pdf_bytes, file_id, question)
+        else:
+            result = document_module.process_pdf(pdf_bytes, file_id)
+            
         return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/youtube/transcript")
-def get_transcript(url: str = Form(...)):
-    try:
-        transcript = youtube_module.get_transcript_only(url)
-        return {"transcript": transcript}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

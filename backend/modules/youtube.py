@@ -204,7 +204,7 @@ class YouTubeModule:
                             "**Kya karein:** 2-3 minute wait karke dobara try karo. "
                             "Free tier ki daily limit midnight Pacific Time pe reset hoti hai."
                         )
-                elif "404" in err or "not found" in err:
+                elif any(x in err for x in ("404", "not found", "is not found", "not supported", "v1beta")):
                     # Model deprecated — try next immediately
                     continue
                 else:

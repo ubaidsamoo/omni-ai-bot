@@ -16,7 +16,7 @@ import time
 FALLBACK_MODELS = [
     "gemini-2.0-flash-lite",   # Primary — fastest + most quota on free tier
     "gemini-2.0-flash",        # Fallback 1
-    "gemini-1.5-flash",        # Fallback 2
+    "gemini-2.0-pro",          # Fallback 2
 ]
 
 
@@ -208,17 +208,37 @@ class YouTubeModule:
         - 429 aane pe: next model pe jump karo
         - Sab models fail karein to user-friendly message
         """
-        models_to_try = FALLBACK_MODELS.copy()
-        # Agar user ne custom model set kiya hai toh pehle woh try karo
-        if self.model_name not in models_to_try:
-            models_to_try.insert(0, self.model_name)
+        # Try to discover available models that support generateContent
+        available_models = []
+        try:
+            for m in genai.list_models():
+                try:
+                    if hasattr(m, 'supported_generation_methods') and 'generateContent' in m.supported_generation_methods:
+                        available_models.append(m.name.replace('models/', ''))
+                except Exception:
+                    # tolerate malformed model entries
+                    continue
+        except Exception:
+            # If listing fails, we'll fall back to the static list below
+            available_models = []
+
+        # Build ordered list to try: user-specified, discovered, then static fallbacks
+        models_to_try = []
+        if self.model_name:
+            models_to_try.append(self.model_name)
+        for m in available_models:
+            if m not in models_to_try:
+                models_to_try.append(m)
+        for m in FALLBACK_MODELS:
+            if m not in models_to_try:
+                models_to_try.append(m)
 
         last_error = ""
 
         for model_name in models_to_try:
             try:
-                model = genai.GenerativeModel(model_name)
-                time.sleep(1)  # Minimal delay — zyada nahi
+                model = genai.GenerativeModel(model_name=model_name)
+                time.sleep(1)
                 response = model.generate_content(prompt)
                 text = self._safe_gemini_response(response)
                 if text:
@@ -227,22 +247,25 @@ class YouTubeModule:
                 err_msg = str(e).lower()
                 last_error = str(e)
 
-                if "429" in err_msg or "quota" in err_msg or "exhausted" in err_msg:
-                    # Is model ki quota khatam — next model try karo
+                # If it's a quota/429 issue, try next model after a short wait
+                if any(x in err_msg for x in ("429", "quota", "exhausted")):
                     time.sleep(3)
                     continue
-                else:
-                    # Quota nahi, koi aur error hai — same model retry mat karo
-                    return f"⚠️ API Error: {str(e)[:150]}"
 
-        # Sab models fail
+                if any(x in err_msg for x in ("404", "not found", "is not found", "not supported", "v1beta")):
+                    continue
+
+                # For other errors, return a concise message so caller can show it
+                return f"⚠️ API Error: {str(e)[:150]}"
+
+        # If we reach here, all models failed (likely quota or unavailable models)
         return (
-            "⚠️ Abhi sabhi Gemini models ki free quota use ho chuki hai.\n\n"
+            "⚠️ Abhi sabhi Gemini models ki free quota use ho chuki hai ya models available nahi hain.\n\n"
             "**Kya karein:**\n"
             "- 1-2 minute wait karke dobara try karein\n"
-            "- Ya kal aayein — daily limit reset ho jaati hai\n"
+            "- Ya naya API key use karke retry karein\n"
             "- Ya Manual Mode mein transcript paste karein\n\n"
-            f"_(Last error: {last_error[:100]})_"
+            f"_(Last error: {last_error[:120]})_"
         )
 
     # ─────────────────────────────────────────────
@@ -271,9 +294,9 @@ class YouTubeModule:
                     f"NOTE: Full transcript unavailable. Analyze based on title and channel context."
                 )
                 transcript_note = (
-                    "⚠️ Transcript fetch nahi ho saka (YouTube ne block kiya).\n"
-                    "Tip: Video description copy karke Manual Mode mein paste karo — "
-                    "behtar analysis milegi!"
+                    "⚠️ Transcript fetch nahi ho saka (YouTube ya API ne block kiya).\n"
+                    "💡 **Tip:** Video ki description ya captions copy karke "
+                    "**Manual Mode** mein paste karo — behtar analysis milegi!"
                 )
             else:
                 char_count = len(transcript)
