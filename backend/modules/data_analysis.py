@@ -164,9 +164,9 @@ Provide 4 sections using emojis: Overview, Key Findings, Answer, and Strategy.""
                 if 'generateContent' in m.supported_generation_methods:
                     available_models.append(m.name.replace('models/', ''))
         except:
-            available_models = [self.model_name, "gemini-1.5-flash"]
+            available_models = [self.model_name, "gemini-2.0-flash"]
 
-        to_try = [self.model_name, "gemini-1.5-flash", "gemini-1.5-pro"]
+        to_try = [self.model_name, "gemini-2.0-flash", "gemini-2.0-pro"]
         for a in available_models:
             if a not in to_try: to_try.append(a)
 

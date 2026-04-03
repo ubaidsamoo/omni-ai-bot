@@ -50,7 +50,7 @@ class ChatModule:
             return f"❌ No Models Found: Is API key par koi bhi Gemini model enabled nahi hai.\nKey Hint: {key_hint}"
 
         # Step 2: Try preferred models first, then fallback to ANY available model
-        preferred = [self.model_name, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash-8b"]
+        preferred = [self.model_name, "gemini-2.0-flash", "gemini-2.0-pro", "gemini-2.0-flash-lite"]
         
         # Merge lists (preferred first, then others)
         to_try = []

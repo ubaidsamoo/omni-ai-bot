@@ -18,7 +18,7 @@ from modules.data_analysis import DataAnalysisModule
 
 app = FastAPI(
     title="Omni AI API",
-    description="Multimodal AI backend powered by Google Gemini 1.5 Flash",
+    description="Multimodal AI backend powered by Google Gemini 2.0 Flash",
     version="2.0.0"
 )
 

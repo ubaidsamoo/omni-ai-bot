@@ -14,9 +14,9 @@ import time
 # ─────────────────────────────────────────────────────────────────────────────
 
 FALLBACK_MODELS = [
-    "gemini-2.5-flash-lite",  # Primary: max free quota, fast
-    "gemini-2.5-flash",       # Fallback 1: reliable stable
-    "gemini-2.5-pro",         # Fallback 2: last resort
+    "gemini-2.0-flash",       # Standard choice for April 2026
+    "gemini-2.0-flash-lite",  # Fast, free, high quota
+    "gemini-2.0-pro",         # Fallback for complex reasoning
 ]
 
 
@@ -180,7 +180,10 @@ class YouTubeModule:
         On 429 → wait briefly and try next model.
         On other errors → return error message immediately.
         """
-        for i, model_name in enumerate(FALLBACK_MODELS):
+        # Try self.model_name first, then fallbacks
+        to_try = [self.model_name] + [m for m in FALLBACK_MODELS if m != self.model_name]
+        
+        for i, model_name in enumerate(to_try):
             try:
                 model = genai.GenerativeModel(model_name)
                 time.sleep(1)
