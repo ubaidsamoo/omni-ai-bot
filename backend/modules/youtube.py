@@ -4,31 +4,31 @@ import re
 import requests
 import time
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# VERIFIED WORKING MODELS — April 2026
-# gemini-1.5-*  → DEAD (404)
-# gemini-2.0-*  → Still alive but retiring June 2026
-# gemini-2.5-flash      → STABLE, FREE, BEST CHOICE
-# gemini-2.5-flash-lite → STABLE, FREE, MAX QUOTA
-# gemini-2.5-pro        → STABLE, FREE (5 RPM only)
+# FREE TIER QUOTA GUIDE (gemini models — least to most expensive):
+#   gemini-1.5-flash-8b  → 1500 RPD, 4M TPM  ← sabse safe, use as primary
+#   gemini-1.5-flash     → 1500 RPD, 1M TPM  ← fallback #1
+#   gemini-2.0-flash     → 1500 RPD, 1M TPM  ← fallback #2
+# Strategy: primary model try karo, 429 aane pe next model pe jump karo.
 # ─────────────────────────────────────────────────────────────────────────────
 
 FALLBACK_MODELS = [
-    "gemini-2.0-flash",       # Standard choice for April 2026
-    "gemini-2.0-flash-lite",  # Fast, free, high quota
-    "gemini-2.0-pro",         # Fallback for complex reasoning
+    "gemini-2.0-flash-lite",   # Primary — fastest + most quota on free tier
+    "gemini-2.0-flash",        # Fallback 1
+    "gemini-1.5-flash",        # Fallback 2
 ]
 
 
 class YouTubeModule:
 
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash-lite"):
+    def __init__(self, api_key: str, model_name: str = "gemini-2.0-flash-lite"):
         genai.configure(api_key=api_key)
         self.model_name = model_name
         self.cache = {}
 
     # ─────────────────────────────────────────────
-    # VIDEO ID EXTRACT
+    # HELPERS
     # ─────────────────────────────────────────────
 
     def _extract_video_id(self, url: str) -> str:
@@ -39,50 +39,70 @@ class YouTubeModule:
                 return match.group(1)
         raise ValueError(f"❌ Invalid YouTube URL: {url}")
 
-    # ─────────────────────────────────────────────
-    # TRANSCRIPT: 3-layer fallback
-    # ─────────────────────────────────────────────
+    # ── TRANSCRIPT: 3-layer fallback ─────────────
 
-    def _fetch_via_tactiq(self, video_id: str) -> str:
-        """Tactiq proxy — works on cloud IPs, no API key needed."""
+    def _fetch_via_supadata(self, video_id: str) -> str:
+        """
+        Supadata API — working endpoint, no API key needed for basic use.
+        Returns plain text transcript.
+        """
         try:
-            resp = requests.post(
-                "https://tactiq-apps-prod.tactiq.io/transcript",
-                json={"videoUrl": f"https://www.youtube.com/watch?v={video_id}", "langCode": "en"},
-                headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
-                timeout=15
-            )
+            url = f"https://supadata.ai/api/youtube/transcript?videoId={video_id}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=12)
             if resp.status_code == 200:
                 data = resp.json()
-                captions = data.get("captions", [])
-                if captions:
-                    text = " ".join(c.get("text", "") for c in captions)
-                    if len(text) > 100:
-                        return text
+                # Try multiple response formats
+                content = data.get("transcript") or data.get("content") or data.get("text") or ""
+                if isinstance(content, list):
+                    content = " ".join(
+                        item.get("text", "") if isinstance(item, dict) else str(item)
+                        for item in content
+                    )
+                if content and len(str(content)) > 100:
+                    return str(content)
         except Exception:
             pass
         return ""
 
-    def _fetch_via_kome(self, video_id: str) -> str:
-        """Kome.ai proxy — free, no key, cloud-friendly."""
+    def _fetch_via_ytt_proxy(self, video_id: str) -> str:
+        """
+        Kiri API — free, no key, works on cloud servers.
+        """
         try:
-            resp = requests.post(
-                "https://kome.ai/api/tools/youtube-transcript",
-                json={"video_id": video_id},
-                headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"},
-                timeout=15
-            )
+            url = f"https://yt-transcript-api.vercel.app/api?videoId={video_id}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=12)
             if resp.status_code == 200:
                 data = resp.json()
-                text = data.get("transcript", "") or data.get("text", "")
-                if text and len(str(text)) > 100:
-                    return str(text)
+                if isinstance(data, list) and len(data) > 0:
+                    return " ".join(item.get("text", "") for item in data)
+                elif isinstance(data, dict):
+                    content = data.get("transcript") or data.get("text") or ""
+                    if content:
+                        return content
         except Exception:
             pass
+
+        # Second proxy attempt
+        try:
+            url = f"https://transcripts.youtubeapi.com/{video_id}"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=12)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, list):
+                    return " ".join(item.get("text", "") for item in data)
+        except Exception:
+            pass
+
         return ""
 
     def _fetch_via_library(self, video_id: str) -> str:
-        """Direct youtube-transcript-api — best on local, sometimes works on HF too."""
+        """
+        youtube-transcript-api direct library call.
+        Local pe kaam karta hai, HF pe aksar block hoti hai — isliye 3rd try.
+        """
         try:
             transcript_list = YouTubeTranscriptApi.get_transcript(
                 video_id, languages=['en', 'en-US', 'en-GB', 'hi', 'ur']
@@ -93,6 +113,7 @@ class YouTubeModule:
         except Exception:
             pass
 
+        # Koi bhi available transcript lo
         try:
             transcripts_obj = YouTubeTranscriptApi.list_transcripts(video_id)
             try:
@@ -106,18 +127,23 @@ class YouTubeModule:
             return " ".join(entry['text'] for entry in fetched)
         except Exception:
             pass
+
         return ""
 
     def _fetch_transcript(self, video_id: str) -> str:
-        """Try all 3 methods in order. Return TRANSCRIPT_ERROR only if ALL fail."""
-
-        # Layer 1: Tactiq (most reliable on cloud)
-        result = self._fetch_via_tactiq(video_id)
+        """
+        3-layer transcript fetching:
+        1. Supadata API      (HF-friendly, free, no key)
+        2. Multiple proxies  (HF-friendly, free, no key)
+        3. Direct library    (local pe best, HF pe last resort)
+        """
+        # Layer 1: Supadata
+        result = self._fetch_via_supadata(video_id)
         if result:
             return result
 
-        # Layer 2: Kome.ai
-        result = self._fetch_via_kome(video_id)
+        # Layer 2: ytt proxy
+        result = self._fetch_via_ytt_proxy(video_id)
         if result:
             return result
 
@@ -126,41 +152,42 @@ class YouTubeModule:
         if result:
             return result
 
-        return "TRANSCRIPT_ERROR"
+        return "TRANSCRIPT_ERROR: Kisi bhi method se transcript nahi mila."
 
-    # ─────────────────────────────────────────────
-    # METADATA
-    # ─────────────────────────────────────────────
+    # ── METADATA ─────────────────────────────────
 
     def _fetch_metadata(self, video_id: str) -> dict:
         metadata = {"title": f"Video {video_id}", "description": "", "thumbnail": ""}
+
+        # oEmbed — sabse reliable
         try:
-            url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
-            resp = requests.get(url, timeout=8)
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+            resp = requests.get(oembed_url, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 metadata["title"] = data.get("title", metadata["title"])
                 metadata["description"] = data.get("author_name", "")
                 metadata["thumbnail"] = data.get("thumbnail_url", "")
-                return metadata
+                return metadata  # oEmbed kaam kar gaya, aur kuch zaroorat nahi
         except Exception:
             pass
+
+        # noembed fallback
         try:
-            url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
-            resp = requests.get(url, timeout=8)
+            noembed_url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
+            resp = requests.get(noembed_url, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 metadata["title"] = data.get("title", metadata["title"])
                 metadata["thumbnail"] = data.get("thumbnail_url", metadata["thumbnail"])
         except Exception:
             pass
+
         return metadata
 
-    # ─────────────────────────────────────────────
-    # GEMINI CALLER — model fallback chain
-    # ─────────────────────────────────────────────
+    # ── GEMINI: model fallback chain ─────────────
 
-    def _safe_response_text(self, response) -> str:
+    def _safe_gemini_response(self, response) -> str:
         try:
             if hasattr(response, 'text') and response.text:
                 return response.text
@@ -176,44 +203,74 @@ class YouTubeModule:
 
     def _call_gemini(self, prompt: str) -> str:
         """
-        Try FALLBACK_MODELS in order.
-        On 429 → wait briefly and try next model.
-        On other errors → return error message immediately.
+        Smart Gemini caller:
+        - Primary: gemini-1.5-flash-8b (max free quota)
+        - 429 aane pe: next model pe jump karo
+        - Sab models fail karein to user-friendly message
         """
-        # Try self.model_name first, then fallbacks
-        to_try = [self.model_name] + [m for m in FALLBACK_MODELS if m != self.model_name]
-        
-        for i, model_name in enumerate(to_try):
+        # Try to discover available models that support generateContent
+        available_models = []
+        try:
+            for m in genai.list_models():
+                try:
+                    if hasattr(m, 'supported_generation_methods') and 'generateContent' in m.supported_generation_methods:
+                        available_models.append(m.name.replace('models/', ''))
+                except Exception:
+                    # tolerate malformed model entries
+                    continue
+        except Exception:
+            # If listing fails, we'll fall back to the static list below
+            available_models = []
+
+        # Build ordered list to try: user-specified, discovered, then static fallbacks
+        models_to_try = []
+        if self.model_name:
+            models_to_try.append(self.model_name)
+        for m in available_models:
+            if m not in models_to_try:
+                models_to_try.append(m)
+        for m in FALLBACK_MODELS:
+            if m not in models_to_try:
+                models_to_try.append(m)
+
+        last_error = ""
+
+        for model_name in models_to_try:
             try:
-                model = genai.GenerativeModel(model_name)
+                model = genai.GenerativeModel(model_name=model_name)
                 time.sleep(1)
                 response = model.generate_content(prompt)
-                text = self._safe_response_text(response)
+                text = self._safe_gemini_response(response)
                 if text:
                     return text
             except Exception as e:
-                err = str(e).lower()
-                if "429" in err or "quota" in err or "exhausted" in err:
-                    # Rate limited — try next model after short wait
-                    if i < len(FALLBACK_MODELS) - 1:
-                        time.sleep(5)
-                        continue
-                    else:
-                        return (
-                            "⚠️ **Quota khatam ho gayi** — teeno Gemini models temporarily limited hain.\n\n"
-                            "**Kya karein:** 2-3 minute wait karke dobara try karo. "
-                            "Free tier ki daily limit midnight Pacific Time pe reset hoti hai."
-                        )
-                elif "404" in err or "not found" in err:
-                    # Model deprecated — try next immediately
-                    continue
-                else:
-                    return f"⚠️ API Error: {str(e)[:150]}"
+                err_msg = str(e).lower()
+                last_error = str(e)
 
-        return "⚠️ Koi bhi model kaam nahi kar raha. Dobara koshish karein."
+                # If it's a quota/429 issue, try next model after a short wait
+                if any(x in err_msg for x in ("429", "quota", "exhausted")):
+                    time.sleep(3)
+                    continue
+
+                # If model not found / 404 for this model name, try next discovered model
+                if any(x in err_msg for x in ("404", "not found", "is not found", "not supported")):
+                    continue
+
+                # For other errors, return a concise message so caller can show it
+                return f"⚠️ API Error: {str(e)[:150]}"
+
+        # If we reach here, all models failed (likely quota or unavailable models)
+        return (
+            "⚠️ Abhi sabhi Gemini models ki free quota use ho chuki hai ya models available nahi hain.\n\n"
+            "**Kya karein:**\n"
+            "- 1-2 minute wait karke dobara try karein\n"
+            "- Ya naya API key use karke retry karein\n"
+            "- Ya Manual Mode mein transcript paste karein\n\n"
+            f"_(Last error: {last_error[:120]})_"
+        )
 
     # ─────────────────────────────────────────────
-    # BASE DATA (shared by all tabs — cached)
+    # BASE DATA (shared by all tabs)
     # ─────────────────────────────────────────────
 
     def _get_base_data(self, url: str, manual_content: str = "") -> dict:
@@ -226,24 +283,26 @@ class YouTubeModule:
 
         if manual_content:
             transcript = manual_content
-            transcript_note = f"📜 Manual Mode — {len(manual_content):,} characters"
+            transcript_note = f"📜 Manual Mode — {len(manual_content)} chars"
         else:
-            raw = self._fetch_transcript(video_id)
-            if raw == "TRANSCRIPT_ERROR":
+            transcript = self._fetch_transcript(video_id)
+
+            if "TRANSCRIPT_ERROR" in transcript:
+                # Sirf metadata hai — iske saath bhi analysis ho sakti hai
                 transcript = (
                     f"VIDEO TITLE: {metadata['title']}\n"
                     f"CHANNEL: {metadata['description']}\n"
-                    "NOTE: Full transcript unavailable. Analyze based on title and channel only."
+                    f"NOTE: Full transcript unavailable. Analyze based on title and channel context."
                 )
                 transcript_note = (
-                    "⚠️ Auto-transcript nahi mila.\n"
-                    "💡 **Tip:** Video ki description ya captions copy karke "
-                    "**Manual Mode** mein paste karo — behtar analysis milegi!"
+                    "⚠️ Transcript fetch nahi ho saka (YouTube ne block kiya).\n"
+                    "Tip: Video description copy karke Manual Mode mein paste karo — "
+                    "behtar analysis milegi!"
                 )
             else:
-                char_count = len(raw)
-                transcript = raw[:8000]
-                transcript_note = f"✅ Transcript mila — {char_count:,} characters"
+                char_count = len(transcript)
+                transcript = transcript[:8000]
+                transcript_note = f"✅ Transcript mila — {char_count:,} characters fetched"
 
         result = {
             "video_id": video_id,
@@ -261,7 +320,7 @@ class YouTubeModule:
 
     def get_summary(self, url: str, manual_content: str = "") -> dict:
         base = self._get_base_data(url, manual_content)
-        cache_key = f"summary_{base['video_id']}_{len(manual_content)}"
+        cache_key = f"summary_{base['video_id']}"
         if cache_key in self.cache:
             return self.cache[cache_key]
 
@@ -269,7 +328,7 @@ class YouTubeModule:
 
 Video Title: {base['metadata']['title']}
 Channel: {base['metadata']['description']}
-Content: {base['transcript']}
+Transcript/Content: {base['transcript']}
 
 Format EXACTLY like this:
 
@@ -279,7 +338,7 @@ Write a detailed 3-5 paragraph summary. Cover the main topic, key discussions, a
 ---
 
 ## 📝 خلاصہ (Roman Urdu)
-Wahi summary Roman Urdu mein — natural chatting style, jaise dost ko bata rahe ho.
+Wahi summary Roman Urdu mein — natural chatting style, jaise dost ko bata rahe ho. Mushkil alfaaz mat use karo.
 
 ---
 
@@ -298,14 +357,14 @@ Wahi summary Roman Urdu mein — natural chatting style, jaise dost ko bata rahe
 
     def get_keypoints(self, url: str, manual_content: str = "") -> dict:
         base = self._get_base_data(url, manual_content)
-        cache_key = f"keypoints_{base['video_id']}_{len(manual_content)}"
+        cache_key = f"keypoints_{base['video_id']}"
         if cache_key in self.cache:
             return self.cache[cache_key]
 
         prompt = f"""You are a YouTube Analyst. Extract KEY POINTS from this video.
 
 Video Title: {base['metadata']['title']}
-Content: {base['transcript']}
+Transcript/Content: {base['transcript']}
 
 Format EXACTLY like this:
 
@@ -343,24 +402,24 @@ Is video ka ek sabse important takeaway — sirf ek line mein.
         prompt = f"""You are a helpful YouTube Analyst Chatbot.
 
 Video Title: {base['metadata']['title']}
-Content: {base['transcript']}
+Transcript/Content: {base['transcript']}
 
 User's Question: {question}
 
 Format EXACTLY like this:
 
 ## 💬 Answer (English)
-Thorough, accurate answer based on the content. If not covered, say so honestly.
+Thorough, accurate answer based on the transcript. If not in video, say so honestly.
 
 ---
 
 ## 💬 جواب (Roman Urdu)
-Same jawab Roman Urdu mein — friendly aur natural tone.
+Wahi jawab Roman Urdu mein — friendly aur natural tone.
 
 ---
 
 ## 📍 Context
-Which part of the video this comes from (if identifiable).
+Which part of the video covers this (if identifiable).
 """
         analysis = self._call_gemini(prompt)
         return {**base, "analysis": analysis, "question": question, "tab": "qa"}
@@ -371,14 +430,14 @@ Which part of the video this comes from (if identifiable).
 
     def get_related_topics(self, url: str, manual_content: str = "") -> dict:
         base = self._get_base_data(url, manual_content)
-        cache_key = f"related_{base['video_id']}_{len(manual_content)}"
+        cache_key = f"related_{base['video_id']}"
         if cache_key in self.cache:
             return self.cache[cache_key]
 
         prompt = f"""You are a YouTube Analyst. Suggest related topics and learning path.
 
 Video Title: {base['metadata']['title']}
-Content: {base['transcript']}
+Transcript/Content: {base['transcript']}
 
 Format EXACTLY like this:
 
@@ -394,11 +453,12 @@ Format EXACTLY like this:
 Same topics Roman Urdu mein.
 
 1. **[Topic]** — Explanation.
+2. **[Topic]** — Explanation...
 
 ---
 
 ## 📚 Learning Path
-Beginner se advanced tak 4-5 steps.
+Beginner se advanced tak 4-5 steps — English mein.
 
 ---
 
