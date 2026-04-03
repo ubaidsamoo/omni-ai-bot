@@ -119,16 +119,7 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "session_id" not in st.session_state:
     st.session_state.session_id = "user_session_1"
-if "yt_module" not in st.session_state:
-    # Use os.getenv to avoid FileNotFoundError from st.secrets if no secrets.toml exists
-    api_key = os.getenv("GOOGLE_API_KEY", os.getenv("GEMINI_API_KEY", ""))
-    st.session_state.yt_module = YouTubeModule(api_key=api_key)
-if "yt_url" not in st.session_state:
-    st.session_state.yt_url = ""
-if "yt_results" not in st.session_state:
-    st.session_state.yt_results = {}   # tab -> result
-if "yt_qa_history" not in st.session_state:
-    st.session_state.yt_qa_history = []
+    pass
 
 # ─────────────────────────────────────────────
 # SIDEBAR
