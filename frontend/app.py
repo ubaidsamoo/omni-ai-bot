@@ -8,7 +8,7 @@ import base64
 from PIL import Image
 import io
 import os
-from youtube_module import YouTubeModule
+
 
 st.set_page_config(page_title="Omni AI", page_icon="🤖", layout="wide", initial_sidebar_state="expanded")
 
@@ -142,7 +142,7 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     st.divider()
-    selected_page = st.radio("Navigate", ["💬 AI Chat", "🎥 YouTube Deep Dive", "📊 Data Analysis"], label_visibility="collapsed")
+    selected_page = st.radio("Navigate", ["💬 AI Chat", "📄 PDF Analyst", "📊 Data Analysis"], label_visibility="collapsed")
     st.divider()
     st.markdown("**🔗 Backend Status**")
     try:
@@ -162,7 +162,7 @@ if selected_page != "💬 AI Chat":
     st.markdown("""
     <div class='main-header'>
         <h1>🤖 Omni AI</h1>
-        <p>Multimodal Intelligence • Chat • YouTube • Data</p>
+        <p>Multimodal Intelligence • Chat • PDF • Data</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -220,123 +220,85 @@ if selected_page == "💬 AI Chat":
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE 2: YOUTUBE DEEP DIVE — TAB-BASED
+# PAGE 2: PDF ANALYST — UPLOAD DOC AND CHAT
 # ══════════════════════════════════════════════════════════════════════════════
-elif selected_page == "🎥 YouTube Deep Dive":
-    st.markdown("## 🎥 YouTube Deep Dive")
-    st.markdown("##### Paste karo URL — Summary, Key Points, Q&A, Related Topics sab ek jagah!")
+elif selected_page == "📄 PDF Analyst":
+    st.markdown("## 📄 PDF Analyst Chatbot")
+    st.markdown("##### Upload any PDF to get summaries, key points, and ask questions! (Max ~50,000 characters)")
 
-    # ── URL Input ──────────────────────────────
-    col_url, col_btn = st.columns([5, 1])
-    with col_url:
-        yt_url_input = st.text_input(
-            "YouTube URL",
-            placeholder="https://www.youtube.com/watch?v=...",
-            label_visibility="collapsed"
-        )
+    # ── Upload Input ──────────────────────────────
+    col_upload, col_btn = st.columns([5, 1])
+    with col_upload:
+        pdf_file = st.file_uploader("Upload PDF File", type=["pdf"])
     with col_btn:
-        yt_analyze_btn = st.button("🚀 Analyze", use_container_width=True)
+        st.write("") # spacing
+        st.write("") 
+        pdf_analyze_btn = st.button("🚀 Analyze", use_container_width=True)
 
-    with st.expander("📋 Manual Mode — Transcript/Description khud paste karo (agar auto-fetch fail ho)"):
-        manual_content = st.text_area(
-            "Content yahan paste karo:",
-            height=120,
-            placeholder="Video description ya transcript yahan paste karo..."
-        )
-
-    # URL change hone pe sab reset karo
-    if yt_url_input and yt_url_input != st.session_state.yt_url:
-        st.session_state.yt_url = yt_url_input
-        st.session_state.yt_results = {}
-        st.session_state.yt_qa_history = []
-
-    yt = st.session_state.yt_module
+    if pdf_file and pdf_file.name != st.session_state.get("pdf_name"):
+        st.session_state.pdf_name = pdf_file.name
+        st.session_state.pdf_results = {}
+        st.session_state.pdf_qa_history = []
+        
+    if "pdf_results" not in st.session_state:
+        st.session_state.pdf_results = {}
+    if "pdf_qa_history" not in st.session_state:
+        st.session_state.pdf_qa_history = []
 
     # Analyze button dabane pe sab tabs ke liye fetch karo
-    if yt_analyze_btn and yt_url_input:
-        with st.spinner("🔍 Video analyze ho rahi hai — thoda sabr karo..."):
+    if pdf_analyze_btn and pdf_file:
+        with st.spinner("🔍 PDF analyze ho rahi hai — thoda sabr karo..."):
             try:
-                # Summary fetch (transcript bhi cache ho jaata hai iske andar)
-                st.session_state.yt_results["summary"] = yt.get_summary(yt_url_input, manual_content or "")
+                pdf_bytes = pdf_file.getvalue()
+                response = requests.post(
+                    f"{BACKEND_URL}/document/analyze",
+                    files={"pdf_file": (pdf_file.name, pdf_bytes, "application/pdf")},
+                    data={"task": "summarize"},
+                    timeout=120
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if "error" in data:
+                        st.error(data["error"])
+                    else:
+                        st.session_state.pdf_results["summary"] = data
+                else:
+                    st.error(f"❌ Backend Error: {response.text}")
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
-
-        if "summary" in st.session_state.yt_results:
-            with st.spinner("🎯 Key Points nikaale ja rahe hain..."):
-                try:
-                    st.session_state.yt_results["keypoints"] = yt.get_keypoints(yt_url_input, manual_content or "")
-                except Exception as e:
-                    st.warning(f"Key Points mein masla: {e}")
-
-            with st.spinner("🔗 Related Topics dhoondhe ja rahe hain..."):
-                try:
-                    st.session_state.yt_results["related"] = yt.get_related_topics(yt_url_input, manual_content or "")
-                except Exception as e:
-                    st.warning(f"Related Topics mein masla: {e}")
-
-    elif yt_analyze_btn and not yt_url_input:
-        st.warning("⚠️ Pehle YouTube URL enter karo!")
+    elif pdf_analyze_btn and not pdf_file:
+        st.warning("⚠️ Pehle PDF upload karo!")
 
     # ── TABS ──────────────────────────────────
-    tab_summary, tab_keys, tab_qa, tab_related = st.tabs([
-        "📝 Summary",
-        "🎯 Key Points",
-        "💬 Q&A Chat",
-        "🔗 Related Topics"
+    tab_summary, tab_qa = st.tabs([
+        "📝 Summary & Key Points",
+        "💬 Q&A Chat"
     ])
 
     # ── TAB 1: SUMMARY ────────────────────────
     with tab_summary:
-        if "summary" in st.session_state.yt_results:
-            r = st.session_state.yt_results["summary"]
-
-            # Video info card
-            col_thumb, col_info = st.columns([1, 3])
-            with col_thumb:
-                thumb = r.get("metadata", {}).get("thumbnail", "")
-                if thumb:
-                    st.image(thumb, use_column_width=True)
-            with col_info:
-                title = r.get("metadata", {}).get("title", "")
-                channel = r.get("metadata", {}).get("description", "")
-                video_url = r.get("video_url", "")
-                if title:
-                    st.markdown(f"### {title}")
-                if channel:
-                    st.markdown(f"**Channel:** {channel}")
-                if video_url:
-                    st.markdown(f"[▶️ YouTube pe dekho]({video_url})")
-
-            note = r.get("transcript_note", "")
-            if note:
-                st.markdown(f'<div class="transcript-note">{note}</div>', unsafe_allow_html=True)
-
+        if "summary" in st.session_state.pdf_results:
+            r = st.session_state.pdf_results["summary"]
+            
+            topic = r.get("topic", "Unknown")
+            st.markdown(f"### 🏷️ Topic: {topic}")
+            st.divider()
+            
             st.markdown(r.get("analysis", ""))
         else:
-            st.info("👆 Upar URL paste karo aur **Analyze** button dabao!")
+            st.info("👆 Upar PDF upload karo aur **Analyze** button dabao!")
 
-    # ── TAB 2: KEY POINTS ─────────────────────
-    with tab_keys:
-        if "keypoints" in st.session_state.yt_results:
-            r = st.session_state.yt_results["keypoints"]
-            note = r.get("transcript_note", "")
-            if note:
-                st.markdown(f'<div class="transcript-note">{note}</div>', unsafe_allow_html=True)
-            st.markdown(r.get("analysis", ""))
-        else:
-            st.info("👆 Pehle URL analyze karo!")
-
-    # ── TAB 3: Q&A CHAT ───────────────────────
+    # ── TAB 2: Q&A CHAT ───────────────────────
     with tab_qa:
-        if not yt_url_input:
-            st.info("👆 Pehle URL paste karo aur Analyze dabao — phir yahan koi bhi sawaal poochho!")
+        if not st.session_state.get("pdf_name"):
+            st.info("👆 Pehle PDF upload karo aur Analyze dabao — phir yahan document ke baaray mein poochho!")
         else:
-            st.markdown("##### 💬 Is video ke baare mein kuch bhi poochho!")
-            st.markdown("*Maslan: 'Is video ka main message kya hai?' ya 'Speaker ne X ke baare mein kya kaha?'*")
+            topic = st.session_state.pdf_results.get("summary", {}).get("topic", "")
+            st.markdown(f"##### 💬 Is document ({topic}) ke baare mein kuch bhi poochho!")
             st.divider()
 
             # Chat history dikhao
-            for msg in st.session_state.yt_qa_history:
+            for msg in st.session_state.pdf_qa_history:
                 if msg["role"] == "user":
                     st.markdown(f'<div class="yt-user">🧑 {msg["text"]}</div>', unsafe_allow_html=True)
                 else:
@@ -349,47 +311,47 @@ elif selected_page == "🎥 YouTube Deep Dive":
                     "Sawaal",
                     placeholder="Apna sawaal yahan likho...",
                     label_visibility="collapsed",
-                    key="yt_qa_input"
+                    key="pdf_qa_input"
                 )
             with btn_col:
-                ask_btn = st.button("📨 Poochho", use_container_width=True, key="yt_ask")
+                ask_btn = st.button("📨 Poochho", use_container_width=True, key="pdf_ask")
 
-            if ask_btn and user_q:
-                st.session_state.yt_qa_history.append({"role": "user", "text": user_q})
+            if ask_btn and user_q and pdf_file:
+                st.session_state.pdf_qa_history.append({"role": "user", "text": user_q})
                 with st.spinner("🤔 Soch raha hoon..."):
                     try:
-                        result = yt.get_answer(yt_url_input, user_q, manual_content or "")
-                        answer = result.get("analysis", "⚠️ Jawab nahi mila.")
-                        st.session_state.yt_qa_history.append({"role": "bot", "text": answer})
+                        pdf_bytes = pdf_file.getvalue()
+                        response = requests.post(
+                            f"{BACKEND_URL}/document/analyze",
+                            files={"pdf_file": (pdf_file.name, pdf_bytes, "application/pdf")},
+                            data={"task": "qa", "question": user_q},
+                            timeout=60
+                        )
+                        if response.status_code == 200:
+                            data = response.json()
+                            if "error" in data:
+                                answer = data["error"]
+                            else:
+                                answer = data.get("analysis", "⚠️ Jawab nahi mila.")
+                            st.session_state.pdf_qa_history.append({"role": "bot", "text": answer})
+                        else:
+                            st.error(f"Backend error: {response.text}")
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
 
-            if st.session_state.yt_qa_history:
-                if st.button("🗑️ Chat saaf karo", key="yt_clear_chat"):
-                    st.session_state.yt_qa_history = []
+            if st.session_state.pdf_qa_history:
+                if st.button("🗑️ Chat saaf karo", key="pdf_clear_chat"):
+                    st.session_state.pdf_qa_history = []
                     st.rerun()
-
-    # ── TAB 4: RELATED TOPICS ─────────────────
-    with tab_related:
-        if "related" in st.session_state.yt_results:
-            r = st.session_state.yt_results["related"]
-            note = r.get("transcript_note", "")
-            if note:
-                st.markdown(f'<div class="transcript-note">{note}</div>', unsafe_allow_html=True)
-            st.markdown(r.get("analysis", ""))
-        else:
-            st.info("👆 Pehle URL analyze karo!")
 
     # Tips
     with st.expander("💡 Tips & Tricks"):
-        st.markdown("""
-        - **English Captions** wali videos ka result sab se behtar aata hai.
-        - **Auto-Generated** YouTube captions bhi kaam karte hain.
-        - **Manual Mode** use karo agar transcript auto-fetch na ho — description paste karo.
-        - **Q&A Tab** mein jitne chaaho sawaal poochho — video ke baare mein sab kuch!
-        - **Private/Restricted** videos support nahi hain.
-        """)
+        st.markdown('''
+        - **Bilingual Focus:** Sawaal dono languages (Roman Urdu/English) mein pooche ja sakte hain.
+        - **PDF Limit:** Boht bari books (>100 pages) model ke limit exceed kr skti hain, unhain compress karein.
+        - **General Mode:** Agar apka sawal exactly document mein nahi hai, system apko uski General Knowledge dega aur clearly mention karega!
+        ''')
 
 
 # ══════════════════════════════════════════════════════════════════════════════
